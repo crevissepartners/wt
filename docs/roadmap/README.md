@@ -13,7 +13,7 @@
 - Shell integration: `wt init <shell>`, `wtg`, `wcd`, `wtr`, `wt completion <shell>`, init/completion install guidance
 - TUI flows: reusable picker core, `wt path --tui`, `wt remove --tui`, `wt prune --tui`, `wt cleanup --tui`
 - Hosting integration: GitHub PR / GitLab MR merged verification
-- Install/update flow: `scripts/install.sh`, `wt upgrade`, latest release resolution
+- Install/update flow: `go install`, `wt upgrade`, latest release resolution
 - Agent workflow docs: reusable prompt template, skill registration guide, roadmap/backlog docs
 
 ## Next Likely Work

@@ -22,7 +22,7 @@ go install github.com/es5h/wt/cmd/wt@latest
 로컬 소스에서 설치:
 
 ```sh
-./scripts/install.sh
+go install ./cmd/wt
 ```
 
 버전 확인:

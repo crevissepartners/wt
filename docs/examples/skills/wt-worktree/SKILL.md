@@ -1,11 +1,29 @@
 ---
 name: "wt-worktree"
-description: "Use when the user wants worktree-based delegation, parallel branch work, draft-PR isolation, or asks for $wt-worktree explicitly. Always prefer the wt CLI over raw git worktree commands to create, run, inspect, and clean up isolated worktrees safely; cleanup operations stay preview-first. Do not use for trivial single-file edits in the current branch, for read-only inspection, or when the user has explicitly asked to keep working in the current pwd without spawning a new worktree."
+description: "Shared Claude/Codex skill for wt-managed worktree delegation, parallel branch work, and draft-PR isolation. Register user-maintained copies from dotfiles into each tool loader path, and always prefer wt over raw git worktree commands; cleanup operations stay preview-first."
 ---
 
 # WT Worktree
 
 Use this skill when the user asks for `$wt-worktree` or when the task benefits from isolated branch work, delegated implementation, or parallel QA.
+
+## App and tool registration
+
+Keep the user-maintained skill source in dotfiles, then copy or symlink it into each tool's loader path.
+
+```text
+<dotfiles>/.claude/skills/wt-worktree/SKILL.md
+<dotfiles>/.codex/skills/wt-worktree/SKILL.md
+```
+
+Tool loader paths:
+
+```text
+Claude Code: ~/.claude/skills/wt-worktree/SKILL.md
+Codex:      $CODEX_HOME/skills/wt-worktree/SKILL.md
+```
+
+Do not install this user skill under `$CODEX_HOME/skills/.system/*`; that namespace is reserved for bundled Codex system skills.
 
 ## Core policy
 

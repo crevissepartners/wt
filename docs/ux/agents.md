@@ -43,8 +43,6 @@ Claude Code와 Codex는 둘 다 `SKILL.md` 기반 스킬을 쓸 수 있다.
 <dotfiles>/.codex/skills/wt-worktree/SKILL.md
 ```
 
-Codex 쪽에는 `wt-worktree` 외에도 같은 dotfiles 영역에 `agent-dev`, `lead-qa`, `lead-ship` 같은 상위 워크플로 스킬이 있을 수 있다. 이 스킬들은 `wt-worktree`를 체인해서 쓰는 역할이며, `wt` 레포의 등록 샘플은 `wt-worktree`만 제공한다.
-
 ## Register the skill
 
 ### Codex

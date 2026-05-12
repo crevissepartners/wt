@@ -141,25 +141,29 @@ wt upgrade --dry-run
 
 `wt-worktree` 스킬을 등록하면 Claude/Codex에서 동일한 worktree 운영 규칙을 재사용할 수 있습니다.
 
-글로벌(모든 프로젝트) 등록:
+현재 권장 구조는 사용자 작성 스킬을 dotfiles에 두고, 각 도구의 skill loader가 읽는 위치에 복사하거나 symlink하는 방식입니다.
 
 ```text
-~/.claude/skills/wt-worktree/SKILL.md
-~/.codex/skills/wt-worktree/SKILL.md
+<dotfiles>/.claude/skills/wt-worktree/SKILL.md
+<dotfiles>/.codex/skills/wt-worktree/SKILL.md
 ```
 
-리포 전용 등록:
+도구별 전역 등록 대상:
 
 ```text
-.claude/skills/wt-worktree/SKILL.md
+Claude Code: ~/.claude/skills/wt-worktree/SKILL.md
+Codex:      $CODEX_HOME/skills/wt-worktree/SKILL.md
 ```
 
-스킬 파일에는 아래 흐름을 포함하는 것을 권장합니다.
+Codex의 `$CODEX_HOME/skills/.system/*`는 번들 시스템 스킬 영역이므로 `wt-worktree` 같은 사용자 스킬 등록 대상으로 사용하지 않습니다. Claude Code는 필요하면 리포 전용 `.claude/skills/wt-worktree/SKILL.md`도 둘 수 있습니다.
+
+스킬 파일에는 아래 흐름을 포함해야 합니다.
 
 - `wt --version`, `wt list` 선확인
 - `wt path --create <branch>`로 작업 경로 확보
 - `wt run <branch> -- <cmd...>`로 실행
 - `wt prune`/`wt cleanup` preview 후 정리
+- 에이전트가 worktree path에서 Git 명령을 실행할 때는 `cd <path> && git ...` 대신 `git -C <path> ...` 사용
 
 상세 템플릿과 도구별 차이는 [docs/ux/agents.md](docs/ux/agents.md)를 참고하세요.
 레포에 포함된 복붙용 샘플은 [docs/examples/skills/wt-worktree/SKILL.md](docs/examples/skills/wt-worktree/SKILL.md) 입니다.

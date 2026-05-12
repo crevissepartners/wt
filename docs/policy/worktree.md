@@ -30,6 +30,18 @@
 - `--root`, `WT_ROOT`, `wt.root`가 상대 경로이면 모두 `<primary-root>` 기준으로 해석한다.
 - `wt.root`는 repo-local config만 읽는다.
 
+## Local Config And Managed Symlinks
+
+- `<primary-root>/.wt/config.toml`은 로컬 worktree 보조 설정이다.
+- 현재 지원하는 설정은 `[[hooks.postCreate.symlinks]]`뿐이다.
+- `source`는 primary repo root 기준, `target`은 새 worktree root 기준 상대 경로다.
+- 절대 경로와 상위 디렉터리 탈출(`..`)은 허용하지 않는다.
+- `target`을 생략하면 `source`와 같은 상대 경로를 사용한다.
+- `onMissingSource` 기본값은 `skip`, `onExistingTarget` 기본값은 `fail`이다.
+- managed symlink는 새 worktree 생성 성공 직후에만 적용한다.
+- live registered worktree가 이미 있어서 path만 반환하는 경우에는 managed symlink를 재적용하지 않는다.
+- `wt remove`/`wt cleanup --apply`로 worktree를 제거하면 symlink 파일은 worktree와 함께 사라지지만 primary repo의 source 파일/디렉터리는 삭제하지 않는다.
+
 ## Create Safety
 
 - `wt create`와 `wt path --create`는 생성 전에 registered entry를 먼저 본다.

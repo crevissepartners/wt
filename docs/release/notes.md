@@ -5,6 +5,9 @@
 
 ## Unreleased
 
+- 2026-05-12: `<primary-root>/.wt/config.toml`의 `[[hooks.postCreate.symlinks]]` 설정을 추가했다. `wt create`와 `wt path --create`가 새 worktree 생성 직후 primary repo 기준 `source`를 새 worktree 기준 `target`에 상대 symlink로 연결하며, source 누락/target 충돌 정책은 `onMissingSource`와 `onExistingTarget`으로 제어한다. 기존 live worktree를 반환할 때는 재적용하지 않고, `--dry-run`은 symlink 생성 없이 stderr preview만 출력한다.
+- 2026-05-12: release-please PR처럼 자동화가 관리하는 PR 본문과 충돌하지 않도록 CI의 PR body 강제 검사 job을 제거했다. PR 본문 작성 기준은 `docs/pr-guidelines.md`와 PR template에 남긴다.
+- 2026-05-12: Agent skill registration 문서를 현재 dotfiles 기반 Claude/Codex 스킬 구조에 맞춰 정리했다. 사용자 작성 `wt-worktree` 스킬은 `<dotfiles>/.claude/skills/...`와 `<dotfiles>/.codex/skills/...`를 기준으로 관리하고, Codex의 `$CODEX_HOME/skills/.system/*`는 사용자 등록 대상이 아닌 시스템 스킬 영역으로 명시했다.
 - 2026-04-29: 저장소 소유권을 `crevissepartners/wt`로 이전했다(GitHub 리다이렉트 유지). 후속으로 Go 모듈 경로를 `github.com/crevissepartners/wt`로 변경하고 import, `internal/buildinfo.ModulePath`, Makefile/스크립트, 테스트 fixture, 문서를 새 경로로 정렬했다. 릴리즈 설치 명령은 `go install github.com/crevissepartners/wt/cmd/wt@latest`다.
 - 2026-04-29: 로컬 설치 흐름을 단순화했다. `scripts/install.sh`를 제거하고 README/roadmap 안내를 표준 `go install ./cmd/wt`(개발) / `go install github.com/crevissepartners/wt/cmd/wt@latest`(릴리즈) 두 경로로 정리했다. 별도 `GOBIN` 강제 주입과 `~/.local/bin` 우선 로직이 사라져 사용자의 Go 환경(`GOBIN`/`GOPATH/bin`)을 그대로 따른다.
 - 2026-03-12: `wt upgrade`가 로컬 `./wt` 같은 비설치 바이너리에서 실행되면 usage error(exit code `2`)로 실패하도록 바꿨다. 현재 실행 파일 경로와 `PATH`의 `wt` 경로를 함께 보여 주고 `wt upgrade`로 다시 실행하라고 안내해, 다른 바이너리를 업그레이드한 뒤 설치본 버전이 안 바뀐 것처럼 보이던 혼동을 줄였다.

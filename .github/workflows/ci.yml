@@ -12,67 +12,6 @@ permissions:
   contents: read
 
 jobs:
-  version_release_policy:
-    name: version-release-policy
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Verify VERSION/release-notes policy
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ZERO_SHA="0000000000000000000000000000000000000000"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
-          else
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-            if [[ "$BASE" == "$ZERO_SHA" ]]; then
-              BASE="$(git rev-list --max-parents=0 "$HEAD" | tail -n 1)"
-            fi
-          fi
-
-          CHANGED_FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
-          printf 'changed files:\n%s\n' "$CHANGED_FILES"
-
-          if ! printf '%s\n' "$CHANGED_FILES" | grep -Fxq "VERSION"; then
-            echo "VERSION unchanged; policy check skipped."
-            exit 0
-          fi
-
-          if ! printf '%s\n' "$CHANGED_FILES" | grep -Fxq "docs/release/notes.md"; then
-            echo "ci: VERSION changed but docs/release/notes.md was not updated." >&2
-            exit 1
-          fi
-
-          VERSION="$(tr -d ' \t\r\n' < VERSION)"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([\-][0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "ci: VERSION is not valid semver: $VERSION" >&2
-            exit 1
-          fi
-
-          PREV_VERSION="$(git show "$BASE:VERSION" 2>/dev/null | tr -d ' \t\r\n' || true)"
-          if [[ -n "$PREV_VERSION" ]]; then
-            if [[ "$PREV_VERSION" == "$VERSION" ]]; then
-              echo "ci: VERSION changed in diff but value is unchanged: $VERSION" >&2
-              exit 1
-            fi
-            LATEST="$(printf '%s\n%s\n' "$PREV_VERSION" "$VERSION" | sort -V | tail -n 1)"
-            if [[ "$LATEST" != "$VERSION" ]]; then
-              echo "ci: VERSION must increase (before=$PREV_VERSION after=$VERSION)" >&2
-              exit 1
-            fi
-          fi
-
-          echo "version-release policy verified."
-
   pr_body:
     name: pr-body
     if: github.event_name == 'pull_request'
@@ -117,12 +56,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify tag format and VERSION match
+      - name: Verify tag format and buildinfo version match
         shell: bash
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          VERSION="$(tr -d ' \t\r\n' < VERSION)"
+          VERSION="$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' internal/buildinfo/buildinfo.go | head -n 1)"
 
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([\-][0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
             echo "ci: tag must be semver with 'v' prefix (e.g. v1.2.3): $TAG" >&2
@@ -130,7 +69,7 @@ jobs:
           fi
 
           if [[ "$TAG" != "v$VERSION" ]]; then
-            echo "ci: tag/version mismatch: tag=$TAG VERSION=$VERSION" >&2
+            echo "ci: tag/version mismatch: tag=$TAG buildinfo.Version=$VERSION" >&2
             exit 1
           fi
 

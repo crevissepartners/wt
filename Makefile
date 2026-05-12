@@ -13,7 +13,7 @@ ifeq ($(strip $(GH_BIN)),)
 GH_BIN := $(GOPATH)/bin/gh
 endif
 
-VERSION ?= $(strip $(shell cat VERSION 2>/dev/null))
+VERSION ?= $(strip $(shell sed -n 's/.*Version = "\([^"]*\)".*/\1/p' internal/buildinfo/buildinfo.go | head -n 1))
 LDFLAGS := -ldflags "-X github.com/crevissepartners/wt/internal/buildinfo.Version=$(VERSION)"
 
 .PHONY: help
@@ -72,7 +72,7 @@ clean: ## Remove local caches
 	@rm -rf -- "$(CACHE_DIR)"
 
 .PHONY: premerge
-premerge: check test ## Pre-merge gate (version/release notes + tests)
+premerge: check test ## Pre-merge gate (release-please config + tests)
 	@./scripts/premerge_verify.sh
 
 .PHONY: pr-create

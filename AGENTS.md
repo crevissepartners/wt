@@ -43,7 +43,7 @@
 ## Docs hygiene
 - 사용자에게 보이는 동작(명령/옵션/출력)이 바뀌면:
   - 스펙은 `docs/`에 반영하고
-  - 요약은 `docs/release/notes.md`에 날짜와 함께 추가한다.
+  - 릴리즈 노트는 기능 PR에서 직접 작성하지 않는다. release-please가 Conventional Commit 기반으로 `CHANGELOG.md`를 갱신한다.
 
 ## Output/UX rules
 - `wt goto ...` 계열은 셸에서 `cd "$(wt goto ...)"`가 가능하도록 **경로만** 출력하는 모드를 기본으로 유지한다.
@@ -65,30 +65,31 @@
 - 셸 통합/완성(초안): `docs/ux/shell.md`
 - TUI 스펙(초안): `docs/ux/tui.md`
 - 로드맵: `docs/roadmap/README.md`
-- 릴리즈 노트: `docs/release/notes.md`
+- 변경 이력: `CHANGELOG.md` (release-please 관리)
+- 과거 수동 릴리즈 노트: `docs/release/notes.md` (legacy archive)
 
 ## Versioning
-- 버전은 `VERSION`에서 관리한다(semver: `MAJOR.MINOR.PATCH`).
-- 사용자에게 보이는 변경이 있으면 `docs/release/notes.md`의 `Unreleased`에 먼저 기록한다.
-- 릴리즈 Git tag는 반드시 `v$(cat VERSION)` 형식을 사용한다.
+- 버전은 release-please가 관리한다.
+- 현재 버전 source는 `.release-please-manifest.json`과 `internal/buildinfo/buildinfo.go`의 `x-release-please-version` marker다.
+- 기능/수정 PR은 release-please version 파일이나 `CHANGELOG.md`를 직접 편집하지 않는다.
+- release-please PR만 `.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`, `CHANGELOG.md`를 갱신한다.
+- 릴리즈 Git tag는 반드시 `vX.Y.Z` 형식을 사용한다.
 - 릴리즈 설치 기준 경로는 `go install github.com/crevissepartners/wt/cmd/wt@latest`로 유지한다.
+- main에 squash merge되는 PR title은 release-please가 읽는 Conventional Commit subject다. 사용자-facing 변경은 `feat: ...` 또는 `fix: ...`처럼 엄격히 작성한다.
 
 ## Merge gate (to main)
 - main에 머지(또는 PR ready) 전에 `make premerge`를 통과시킨다.
 - 사용자에게 보이는 변경(명령/옵션/출력/기본값)이 포함되면:
-  - 같은 PR에서 `VERSION`을 반드시 bump 한다(기본은 `PATCH`, 필요 시 `MINOR`/`MAJOR`).
-  - `docs/release/notes.md`의 `Unreleased`에 변경사항을 추가한다.
+  - 같은 PR에서 관련 스펙/정책/UX 문서를 갱신한다.
+  - PR title을 Conventional Commit 형식으로 작성한다.
 
 ## Release automation
-- `main` push마다 GitHub Actions가 현재 `VERSION`의 태그(`v$(cat VERSION)`) 존재 여부를 확인하고, 태그가 없으면 자동 생성한다.
-- 자동 태깅 가드:
-  - `VERSION` 변경 PR은 같은 변경 범위에서 `docs/release/notes.md`도 반드시 갱신되어야 한다.
-  - `VERSION`은 유효한 semver여야 하고, 이전 값보다 증가해야 한다.
-  - `VERSION`이 변경된 push에서 동일 태그가 이미 존재하면 자동 태깅은 실패한다(중복 릴리즈 방지).
-- 태그 릴리즈는 `v*` push로 동작한다.
-- CI/release는 tag의 semver 형식(`vX.Y.Z...`)과 `VERSION` 일치 여부를 검증한다.
-- 자동화 에이전트는 릴리즈 PR/문서에서 tag 예시를 작성할 때 항상 위 규칙을 사용한다.
+- `release-please-action`이 main push를 감시하고 Conventional Commit subject를 누적해 release PR을 생성/갱신한다.
+- release PR은 `.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`, `CHANGELOG.md`를 함께 갱신한다.
+- release PR을 merge하면 release-please가 `vX.Y.Z` 태그와 GitHub Release를 생성한다.
+- CI는 tag push에서 `vX.Y.Z` 형식과 `internal/buildinfo.Version` 일치 여부를 검증한다.
 - 자동화 에이전트는 릴리즈 정책을 우회하기 위해 수동 tag push를 기본 전략으로 사용하지 않는다(예외 상황은 PR 본문에 사유 명시).
+- Non-Conventional commit subject는 release-please가 release note 계산에서 건너뛸 수 있으므로 PR title을 엄격히 유지한다.
 
 ## PR guidelines
 - PR 작성 가이드: `docs/pr-guidelines.md`

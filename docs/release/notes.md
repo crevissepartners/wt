@@ -1,6 +1,7 @@
 # Release notes
 
-README에는 변경 이력을 중복해서 적지 않고, 사용자-facing 변경은 이 문서에만 기록한다.
+이 문서는 release-please 도입 전 수동 릴리즈 노트 archive다.
+새 변경 이력은 `CHANGELOG.md`와 GitHub Release에 기록한다.
 
 ## Unreleased
 

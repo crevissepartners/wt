@@ -7,8 +7,9 @@
 - [docs/ux/tui.md](ux/tui.md): TUI 진입 조건과 상호작용 흐름
 - [docs/ux/agents.md](ux/agents.md): Claude/Codex 에이전트 연동 가이드
 - [docs/examples/skills/wt-worktree/SKILL.md](examples/skills/wt-worktree/SKILL.md): 글로벌/로컬 스킬 등록용 샘플
-- [docs/release/notes.md](release/notes.md): 사용자-facing 변경 이력
-- [docs/release/process.md](release/process.md): 태그 기반 릴리즈 절차
+- [../CHANGELOG.md](../CHANGELOG.md): release-please가 관리하는 변경 이력
+- [docs/release/notes.md](release/notes.md): 과거 수동 릴리즈 노트 archive
+- [docs/release/process.md](release/process.md): release-please 기반 릴리즈 절차
 - [docs/roadmap/README.md](roadmap/README.md): 이미 완료된 범위와 다음 현실적 개발 순서
 - [docs/roadmap/backlog.md](roadmap/backlog.md): 다음 피처 논의를 위한 우선순위 backlog
 - [docs/pr-guidelines.md](pr-guidelines.md): PR 본문과 E2E 작성 규칙

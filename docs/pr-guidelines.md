@@ -5,30 +5,30 @@
 ## Core Rules
 
 - PR 하나는 한 가지 주제만 다룬다.
-- 사용자-facing 변경이 있으면 `docs/spec/cli.md`와 `docs/release/notes.md`를 함께 갱신한다.
+- 사용자-facing 변경이 있으면 `docs/spec/cli.md`와 관련 UX/정책 문서를 함께 갱신한다.
 - 파괴적 동작은 기본값으로 두지 않는다.
 - 자동화 에이전트가 작성하는 PR 본문은 기본적으로 한글을 사용한다.
 - 예시와 E2E 가이드에는 로컬 절대경로, 계정명, 사내 URL 같은 민감정보를 넣지 않는다.
 - 재사용 프롬프트는 `docs/prompts/feature-pr-template.md`를 기본으로 사용한다.
+- PR title은 squash merge 후 main에 남는 Conventional Commit subject다. release-please가 이 subject를 읽으므로 `feat: ...`, `fix: ...`, `chore: ...` 형식을 지킨다.
 
 ## Merge Gate
 
 - 머지 전 기준은 `make premerge` 통과다.
-- 사용자-facing 변경이 있으면 같은 PR에서 `VERSION`을 반드시 bump 한다.
-  - 기본값은 `PATCH` bump이고, 호환성/기능 변화 규모에 따라 `MINOR`/`MAJOR`를 선택한다.
-- `VERSION`을 변경한 PR은 같은 PR에서 `docs/release/notes.md`를 반드시 함께 갱신한다.
-- `VERSION`을 변경한 PR은 이전 버전보다 증가해야 한다(동일/감소 금지).
+- 기능/수정 PR은 release-please version 파일(`.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`)과 `CHANGELOG.md`를 직접 bump 하지 않는다.
+- 버전과 changelog는 release-please가 생성하는 release PR에서만 갱신한다.
 - 문서 정합성 PR이라도, 어떤 실제 구현 상태를 기준으로 문서를 맞췄는지 PR 본문에서 분명히 적는다.
 
-## Tag release policy
+## Release policy
 
 - 릴리즈 태그는 `v<semver>` 형식을 사용한다. 예: `v0.10.2`
-- 태그는 항상 `VERSION` 파일 값과 일치해야 한다. (`tag == v$(cat VERSION)`)
-- `main` push마다 GitHub Actions가 현재 `VERSION`의 태그를 확인하고, 태그가 없으면 `v$(cat VERSION)`를 자동 생성한다.
-- 같은 push 범위에서 `VERSION`만 변경되고 `docs/release/notes.md`가 변경되지 않으면 CI가 실패한다.
-- `VERSION`이 변경된 push에서 이미 존재하는 태그와 충돌하면 auto-tag 워크플로는 실패한다(수동 덮어쓰기 금지).
+- `release-please-action`이 main push의 Conventional Commit subject를 누적해 release PR을 생성/갱신한다.
+- release PR은 `.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`, `CHANGELOG.md`를 함께 갱신한다.
+- release PR을 merge하면 release-please가 `vX.Y.Z` 태그와 GitHub Release를 생성한다.
+- 태그는 항상 `internal/buildinfo.Version` 값과 일치해야 한다. (`tag == v<buildinfo.Version>`)
 - 릴리즈/업그레이드 관련 PR은 설치 기준 경로를 `go install github.com/crevissepartners/wt/cmd/wt@latest`로 명시한다.
-- 태그 push 시 `ci`/`release` 워크플로 검증이 통과해야 릴리즈가 완료된 것으로 본다.
+- 태그 push 시 `ci`의 tag 검증이 통과해야 릴리즈가 완료된 것으로 본다.
+- Non-Conventional commit subject는 release-please가 건너뛸 수 있으므로 squash merge PR title을 엄격히 관리한다.
 
 ## Recommended PR Body Sections
 
@@ -40,7 +40,7 @@
 
 예시:
 
-- `PR #1~#23 확인 기준으로 README/spec/policy/release notes를 현재 main 구현과 일치시키는 문서 정리`
+- `PR #1~#23 확인 기준으로 README/spec/policy 문서를 현재 main 구현과 일치시키는 문서 정리`
 
 ### User impact
 
@@ -154,8 +154,8 @@ PR 본문에는 수정한 사용자 문서를 명시한다.
 
 - `README.md`
 - `docs/spec/cli.md`
-- `docs/release/notes.md`
 - 필요 시 `docs/ux/*`, `docs/policy/*`, `docs/roadmap/*`
+- 릴리즈 정책 변경이면 `docs/release/process.md`, `docs/pr-guidelines.md`
 
 ## Prompt Template
 

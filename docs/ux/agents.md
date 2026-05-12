@@ -30,49 +30,55 @@ wt cleanup
 ## Shared skill
 
 Claude Code와 Codex는 둘 다 `SKILL.md` 기반 스킬을 쓸 수 있다.
-그래서 `wt` 운영 규칙은 공통 skill 하나로 두고, 도구별 차이는 설치 경로만 분리하는 편이 가장 단순하다.
+그래서 `wt` 운영 규칙은 공통 skill 하나로 두고, 도구별 차이는 등록 경로와 호출 정책만 분리하는 편이 가장 단순하다.
 
 샘플 파일: `docs/examples/skills/wt-worktree/SKILL.md`
 
-```md
-# wt-worktree
+스킬 본문에는 최소한 repo context 확인, `wt --version`, `wt list`, `wt path --create <branch>`, `wt run <branch> -- <cmd...>`, cleanup preview-first 정책, 그리고 에이전트용 `git -C <path>` 규칙을 포함한다.
 
-## When to use
-- worktree 생성/탐색/정리가 필요한 작업
-- 병렬 에이전트 실행 시 브랜치별 격리가 필요한 작업
+현재 PC 기준으로는 사용자 작성 스킬이 dotfiles 아래에 있고, 도구별 loader 위치에는 복사하거나 symlink해서 등록한다.
 
-## Required checks
-- `wt --version`
-- `wt list`
-
-## Standard flow
-1. `wt path --create <branch>`로 작업 경로 확보
-2. 필요한 작업 실행
-3. 필요 시 `wt cleanup`/`wt prune`로 정리
-
-## Safety
-- destructive 옵션은 사용자 명시 요청 시에만 사용
-- remove/prune는 기본적으로 preview 먼저 실행
+```text
+<dotfiles>/.claude/skills/wt-worktree/SKILL.md
+<dotfiles>/.codex/skills/wt-worktree/SKILL.md
 ```
+
+Codex 쪽에는 `wt-worktree` 외에도 같은 dotfiles 영역에 `agent-dev`, `lead-qa`, `lead-ship` 같은 상위 워크플로 스킬이 있을 수 있다. 이 스킬들은 `wt-worktree`를 체인해서 쓰는 역할이며, `wt` 레포의 등록 샘플은 `wt-worktree`만 제공한다.
 
 ## Register the skill
 
 ### Codex
 
-전역:
+사용자 작성 스킬의 기준 위치:
+
+```text
+<dotfiles>/.codex/skills/wt-worktree/SKILL.md
+```
+
+Codex가 읽는 전역 위치:
 
 ```text
 $CODEX_HOME/skills/wt-worktree/SKILL.md
 ```
 
+`$CODEX_HOME/skills/.system/*`는 Codex가 제공하는 시스템 스킬 영역이다. 사용자 작성 `wt-worktree` 스킬은 `.system` 아래에 두지 않는다.
+
 ### Claude Code
 
-프로젝트 또는 전역:
+사용자 작성 스킬의 기준 위치:
+
+```text
+<dotfiles>/.claude/skills/wt-worktree/SKILL.md
+```
+
+Claude Code가 읽는 위치:
 
 ```text
 .claude/skills/wt-worktree/SKILL.md
 ~/.claude/skills/wt-worktree/SKILL.md
 ```
+
+팀 또는 repo 고유 정책이 있으면 `.claude/skills/...`에 repo-local override를 두고, 개인 공통 정책은 `~/.claude/skills/...` 또는 dotfiles 관리본을 사용한다.
 
 ## Use it in prompts
 
@@ -86,7 +92,7 @@ wt-worktree 스킬을 사용해서 <task>
 
 - `wt --version`, `wt list`
 - `wt path --create <branch>`
-- 그 worktree에서만 작업
+- `wt run <branch> -- <cmd...>` 또는 `git -C <path> ...`로 그 worktree에서만 작업
 
 ## Install and upgrade
 

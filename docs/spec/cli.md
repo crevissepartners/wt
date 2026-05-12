@@ -10,6 +10,30 @@
 - 경로를 돌려주는 명령(`wt path`, `wt root`, `wt create`)의 기본 출력은 path-only 다.
 - `--tui` 화면에서 긴 줄(branch/path/help/filter)은 현재 터미널 가로폭에 맞춰 말줄임(`...`) 처리한다.
 
+## Local `.wt/config.toml`
+
+`wt`는 primary repo의 `<primary-root>/.wt/config.toml`을 로컬 설정 파일로 읽는다. 이 파일은 primary repo 기준의 worktree 보조 설정이며, 현재 구현된 항목은 post-create managed symlink뿐이다.
+
+```toml
+[[hooks.postCreate.symlinks]]
+source = ".env.local"
+target = ".env.local"
+onMissingSource = "skip"
+onExistingTarget = "fail"
+```
+
+규칙:
+
+- `source`는 primary repo root 기준 상대 경로다.
+- `target`은 새 worktree root 기준 상대 경로다.
+- `target`을 생략하면 `source`와 같은 상대 경로를 사용한다.
+- `source`와 `target`은 절대 경로와 상위 디렉터리 탈출(`..`)을 허용하지 않는다.
+- `onMissingSource`는 `skip` 또는 `fail`이며 기본값은 `skip`이다.
+- `onExistingTarget`은 `fail` 또는 `skip`이며 기본값은 `fail`이다.
+- target이 이미 같은 source를 가리키는 symlink이면 성공으로 처리한다.
+- target이 다른 파일, 디렉터리, 또는 다른 symlink이고 `onExistingTarget = "fail"`이면 실패한다.
+- symlink는 상대 symlink로 생성한다.
+
 ### Structured output 규칙 (remove/prune/cleanup)
 
 - `action`은 텍스트 출력의 첫 토큰과 같은 어휘를 JSON에도 그대로 사용한다.
@@ -117,6 +141,9 @@ query와 매칭되는 registered worktree path를 출력한다.
 - 로컬 브랜치가 없고 `origin/<branch>`가 있으면 `git worktree add -b <branch> <path> origin/<branch>`를 사용한다.
 - 둘 다 없으면 `git worktree add -b <branch> <path> <from>`을 사용한다.
 - 동일 브랜치 또는 query에 대응되는 registered `prunable` entry가 있으면 자동 복구하지 않고 실패하며 `wt prune --apply`를 안내한다.
+- 새 worktree 생성 성공 직후 `<primary-root>/.wt/config.toml`의 `[[hooks.postCreate.symlinks]]` 항목을 적용한다.
+- 이미 존재하는 live registered worktree path를 반환하는 경우에는 post-create symlink를 다시 적용하지 않는다.
+- post-create symlink 실패 시 명령은 non-zero로 실패하지만, 이미 생성된 worktree를 자동 삭제하지 않는다.
 - 최종 생성 경로 preflight를 먼저 수행한다:
   - 경로가 없으면 통과
   - 기존 파일이면 usage error(exit code 2)
@@ -124,6 +151,7 @@ query와 매칭되는 registered worktree path를 출력한다.
   - 기존 디렉터리가 비어있지 않으면 usage error(exit code 2)
   - symbolic link를 포함한 기타 타입은 usage error(exit code 2)
 - `--dry-run`도 동일 preflight를 수행하고, 통과 시에만 `stderr`에 preview command를 출력한다.
+- `--dry-run`은 post-create symlink를 실제 생성하지 않고 `stderr`에 preview만 출력한다.
 
 ## `wt root`
 
@@ -165,6 +193,9 @@ branch용 worktree를 만든다.
 - 우선순위는 `--path` > `--root` > `WT_ROOT` > repo-local `wt.root` > default root 다.
 - 동일 브랜치의 live registered worktree가 있으면 그 path를 반환한다.
 - 동일 브랜치의 registered `prunable` entry가 있으면 실패하고 `wt prune --apply`를 안내한다.
+- 새 worktree 생성 성공 직후 `<primary-root>/.wt/config.toml`의 `[[hooks.postCreate.symlinks]]` 항목을 적용한다.
+- 이미 존재하는 live registered worktree path를 반환하는 경우에는 post-create symlink를 다시 적용하지 않는다.
+- post-create symlink 실패 시 명령은 non-zero로 실패하지만, 이미 생성된 worktree를 자동 삭제하지 않는다.
 
 옵션:
 
@@ -178,6 +209,7 @@ branch용 worktree를 만든다.
 - 실제 생성 대신 실행될 `git worktree add ...` 명령을 `stderr`에 출력한다.
 - 반환값은 실제 생성 시 사용할 path다.
 - 실제 실행 전 최종 생성 경로 preflight를 동일하게 수행한다.
+- post-create symlink는 실제 생성하지 않고 `stderr`에 preview만 출력한다.
 
 ## `wt remove [query]`
 

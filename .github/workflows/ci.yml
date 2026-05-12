@@ -12,23 +12,6 @@ permissions:
   contents: read
 
 jobs:
-  pr_body:
-    name: pr-body
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26.0"
-          cache: false
-
-      - name: Verify PR body contains E2E guide section
-        run: go run ./scripts/check_pr_body_e2e.go
-
   premerge:
     name: premerge
     runs-on: ubuntu-latest

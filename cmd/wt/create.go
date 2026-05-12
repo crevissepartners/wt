@@ -99,6 +99,11 @@ func createWorktreeFromList(ctx context.Context, d *deps, repoRoot string, prima
 		}
 	}
 
+	postCreate, err := loadPostCreateConfig(primaryRoot, d.ReadFile)
+	if err != nil {
+		return "", err
+	}
+
 	// If the local branch exists, we just add a worktree for it.
 	localExists, err := git.RefExists(ctx, d.Runner, repoRoot, "refs/heads/"+branch)
 	if err != nil {
@@ -108,9 +113,15 @@ func createWorktreeFromList(ctx context.Context, d *deps, repoRoot string, prima
 	if localExists {
 		if opts.DryRun {
 			fmt.Fprintf(os.Stderr, "dry-run: git worktree add %s %s\n", targetPath, branch)
+			if err := applyPostCreateSymlinks(primaryRoot, targetPath, postCreate, true); err != nil {
+				return "", err
+			}
 			return targetPath, nil
 		}
 		if err := git.WorktreeAddExistingBranch(ctx, d.Runner, repoRoot, targetPath, branch); err != nil {
+			return "", err
+		}
+		if err := applyPostCreateSymlinks(primaryRoot, targetPath, postCreate, false); err != nil {
 			return "", err
 		}
 		return targetPath, nil
@@ -143,10 +154,16 @@ func createWorktreeFromList(ctx context.Context, d *deps, repoRoot string, prima
 
 	if opts.DryRun {
 		fmt.Fprintf(os.Stderr, "dry-run: git worktree add -b %s %s %s\n", branch, targetPath, startPoint)
+		if err := applyPostCreateSymlinks(primaryRoot, targetPath, postCreate, true); err != nil {
+			return "", err
+		}
 		return targetPath, nil
 	}
 
 	if err := git.WorktreeAddNewBranch(ctx, d.Runner, repoRoot, targetPath, branch, startPoint); err != nil {
+		return "", err
+	}
+	if err := applyPostCreateSymlinks(primaryRoot, targetPath, postCreate, false); err != nil {
 		return "", err
 	}
 	return targetPath, nil

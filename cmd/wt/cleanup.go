@@ -178,6 +178,7 @@ func collectCleanupCandidates(ctx context.Context, d *deps, repoRoot string) ([]
 		verifyCtx.RemoteURL = remoteURL
 		verifyCtx.VerifyHosting = true
 		verifyCtx.HostingProvider = hosting.DetectProvider(remoteURL)
+		verifyCtx.HostingCache = newHostingVerifyCache()
 	}
 
 	paths := resolveListPaths(ctx, d, repoRoot)

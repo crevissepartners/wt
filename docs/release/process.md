@@ -1,47 +1,49 @@
 # Release process
 
-`wt` 릴리즈는 Go module 태그(`vX.Y.Z`)를 기준으로 배포한다.
+`wt` 릴리즈는 release-please가 생성하는 `vX.Y.Z` 태그와 GitHub Release를 기준으로 배포한다.
 
 ## Rules
 
-- `VERSION`은 `X.Y.Z` 형식(접두사 `v` 없음)을 사용한다.
-- Git tag는 반드시 `v$(cat VERSION)` 형식을 사용한다.
-- 사용자-facing 변경은 merge 전에 `docs/release/notes.md`의 `## Unreleased`에 기록한다.
+- 기능/수정 PR은 버전 파일이나 `CHANGELOG.md`를 직접 수정하지 않는다.
+- main에 squash merge되는 PR title은 release-please가 읽는 Conventional Commit subject다.
+- 사용자-facing 기능은 `feat: ...`, 버그 수정은 `fix: ...`를 사용한다.
+- breaking change는 Conventional Commit 규칙에 따라 `!` 또는 `BREAKING CHANGE:` footer를 사용한다.
+- release-please PR만 `.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`, `CHANGELOG.md`를 갱신한다.
+- 릴리즈 태그는 `vX.Y.Z` 형식을 사용하고, `internal/buildinfo.Version`과 일치해야 한다.
 - 릴리즈 설치 경로는 `go install github.com/crevissepartners/wt/cmd/wt@latest`를 기준으로 유지한다.
-- `VERSION`을 변경한 PR은 같은 PR에서 `docs/release/notes.md`도 반드시 함께 갱신한다.
-- `VERSION`은 base 대비 증가해야 하며, 이미 존재하는 태그와 충돌하면 안 된다.
 
 ## Release steps
 
-1. main에 반영할 PR에서 `VERSION`을 bump 하고 `docs/release/notes.md`를 업데이트한다.
-2. main push마다 `auto-tag` 워크플로가 현재 `VERSION`을 읽어 `v$(cat VERSION)` 태그를 확인한다.
-3. 태그가 없으면 자동 생성/푸시하고, 이미 있으면 skip 한다.
-4. `VERSION`이 변경된 push라면 release notes 동반 변경과 태그 중복 정책을 함께 검증한다.
-5. 태그 push 이벤트로 `release` 워크플로가 태그 검증 후 GitHub Release를 자동 생성한다.
+1. 기능/수정 PR을 Conventional Commit title로 main에 squash merge한다.
+2. main push마다 `release-please` 워크플로가 변경 subject를 누적한다.
+3. release-please가 `chore(main): release X.Y.Z` PR을 생성하거나 갱신한다.
+4. release PR에는 `.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`, `CHANGELOG.md` 변경이 포함된다.
+5. release PR을 merge하면 release-please가 `vX.Y.Z` 태그와 GitHub Release를 생성한다.
+6. tag push 이벤트에서 CI가 tag 형식과 `internal/buildinfo.Version` 일치를 검증한다.
 
-수동 태깅(예외 상황에서만):
+## Manual release exception
+
+수동 태깅은 기본 전략이 아니다. release-please 장애 등 예외 상황에서만 사용하고, PR/이슈에 사유와 실행 로그를 남긴다.
 
 ```sh
 git switch main
 git pull --ff-only
-VERSION="$(cat VERSION)"
-git tag -a "v${VERSION}" -m "release: v${VERSION}"
-git push origin "v${VERSION}"
+version="$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' internal/buildinfo/buildinfo.go | head -n 1)"
+git tag -a "v${version}" -m "release: v${version}"
+git push origin "v${version}"
 ```
 
 ## Verification
 
 - `go list -m github.com/crevissepartners/wt@latest`가 방금 배포한 태그를 가리키는지 확인한다.
 - `go install github.com/crevissepartners/wt/cmd/wt@latest` 후 `wt --version` 출력이 태그 버전과 일치하는지 확인한다.
-- GitHub Actions `ci`는 PR/main push에서 `VERSION`/`docs/release/notes.md` 정책과 semver 증가를 검증한다.
-- GitHub Actions `ci`는 tag push 시 `v<semver>` 형식과 `VERSION` 파일 일치 여부를 자동 검증한다.
-- GitHub Actions `auto-tag`는 main push마다 현재 `VERSION` 태그 존재 여부를 확인하고, 태그가 없을 때 생성한다.
-- GitHub Actions `auto-tag`는 `VERSION`이 변경된 push에서 태그 중복이 발견되면 실패한다.
-- GitHub Actions `release`는 같은 검증을 통과한 tag에 대해 Release를 자동 발행한다.
+- GitHub Actions `ci`는 PR에서 `make premerge`를 실행한다.
+- GitHub Actions `ci`는 tag push 시 `v<semver>` 형식과 `internal/buildinfo.Version` 일치 여부를 검증한다.
+- GitHub Release 본문과 `CHANGELOG.md`는 release-please가 생성한 내용을 기준으로 한다.
 
-## Auto-tag failure response
+## Release-please failure response
 
-- `auto-tag` 실패 시 먼저 실패 원인을 확인한다: `VERSION`/`docs/release/notes.md` 동반 변경 누락, semver 형식 오류, 버전 증가 규칙 위반, `VERSION` 변경 push에서의 기존 tag 충돌.
-- 정책 위반이면 fix PR로 `VERSION`과 `docs/release/notes.md`를 함께 수정하고 main에 다시 머지한다(강제 push/태그 덮어쓰기 금지).
-- 기존 tag 충돌이면 이미 릴리즈된 버전으로 판단하고 `VERSION`을 다음 semver로 올린 PR을 만든다.
-- 예외적으로 수동 태깅이 필요하면 PR/이슈에 사유와 실행 로그를 남기고, 태그는 반드시 `v$(cat VERSION)` 규칙을 지킨다.
+- release PR이 열리지 않으면 PR title이 Conventional Commit 형식인지 먼저 확인한다.
+- `RELEASE_PLEASE_TOKEN` 권한 문제면 repository secret과 `contents: write`, `pull-requests: write` 권한을 확인한다.
+- release PR에 버전 파일이 누락되면 `release-please-config.json`의 `extra-files`와 `x-release-please-version` marker를 확인한다.
+- 수동 tag push로 우회하지 말고, 가능하면 release-please 설정을 고친 PR을 먼저 만든다.

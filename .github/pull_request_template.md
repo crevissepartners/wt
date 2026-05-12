@@ -26,5 +26,8 @@ make run ARGS="list --verify --base origin/main"
 ```
 
 ## Docs
-- 스펙/정책/릴리즈 노트 등 변경한 문서 링크
+- 스펙/정책/UX/릴리즈 절차 등 변경한 문서 링크
 
+## Release
+- PR title은 Conventional Commit 형식인가? (`feat: ...`, `fix: ...`, `chore: ...`)
+- 기능/수정 PR에서 `CHANGELOG.md`와 release-please version 파일을 직접 수정하지 않았는가?

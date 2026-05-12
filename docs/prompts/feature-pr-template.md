@@ -21,9 +21,8 @@
 - 불확실한 내용은 추측으로 문서화하지 않는다.
 - 구현 작업은 기본적으로 `wt` 분리 워크트리에서 진행한다.
 - 사용자-facing 변경 PR에서는 E2E 명령을 실제 실행하고 결과를 PR 본문에 남긴다.
-- 사용자-facing 변경 PR에서는 같은 PR에서 `VERSION`을 반드시 bump 한다.
-- `VERSION`을 변경한 PR에서는 같은 PR에서 `docs/release/notes.md`를 반드시 함께 갱신한다.
-- `VERSION`은 이전 값보다 증가해야 하며(동일/감소 금지), main 머지 후 auto-tag(`v$(cat VERSION)`)와 충돌하면 안 된다.
+- 기능/수정 PR에서는 release-please version 파일(`.release-please-manifest.json`, `internal/buildinfo/buildinfo.go`)과 `CHANGELOG.md`를 직접 bump 하지 않는다.
+- release-please가 PR title의 Conventional Commit subject를 읽으므로 PR title은 `feat: ...`, `fix: ...`, `chore: ...` 형식을 지킨다.
 
 ## Minimal template
 
@@ -110,7 +109,7 @@ Constraints
 Definition of Done
 - 필터 옵션과 조합 규칙이 구현된다.
 - 텍스트 출력과 JSON 출력에서 필터 결과가 일관된다.
-- 관련 문서와 릴리즈 노트가 동기화된다.
+- 관련 스펙/정책/UX 문서가 동기화된다.
 - `make premerge`를 통과한다.
 
 Task
@@ -118,7 +117,7 @@ Task
 - 대상 파일/모듈: `cmd/wt/list.go`, `cmd/wt/list_test.go`
 - 기능 계약: `--stale`, `--safe-to-remove`, `--recommended <none|prune|remove>` 필터를 정의하고 조합 규칙을 명확히 한다.
 - 테스트: 옵션 조합, JSON/text 일관성, 기존 verify/porcelain 회귀를 확인한다.
-- 문서: `docs/spec/cli.md`, `docs/release/notes.md`, 필요 시 roadmap/backlog를 갱신한다.
+- 문서: `docs/spec/cli.md`, 필요 시 `docs/ux/*`, `docs/policy/*`, roadmap/backlog를 갱신한다.
 
 ## PR body requirements
 - Summary, User impact, Behavior, Safety, Tests, E2E guide, E2E Done 섹션을 모두 포함한다.

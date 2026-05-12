@@ -7,7 +7,8 @@
 - `README`: 빠른 설치와 사용 흐름
 - `docs/spec/cli.md`: 실제 명령/옵션/출력 규칙
 - `docs/policy/worktree.md`: 경로, safety, non-TTY 같은 내부 원칙
-- `docs/release/notes.md`: 사용자-facing 변경 이력
+- `CHANGELOG.md`: release-please가 관리하는 변경 이력
+- `docs/release/notes.md`: 과거 수동 릴리즈 노트 archive
 
 ## Git Context And Registered Entries
 
@@ -94,7 +95,7 @@
 - 변경/이탈 절차:
   - 통일 규칙을 의도적으로 벗어나는 변경은 허용하되, 같은 PR에서 `docs/spec/cli.md`와 본 정책 문서를 함께 갱신한다.
   - 이탈 사유(호환성, 안전성, 구현 제약)와 마이그레이션 가이드를 PR 본문 `Behavior`에 명시한다.
-  - 사용자-facing 변화라면 `docs/release/notes.md`와 `VERSION` 정책을 따른다.
+  - 사용자-facing 변화라면 관련 스펙/정책/UX 문서를 갱신하고 PR title을 Conventional Commit 형식으로 작성한다.
 
 ## Root Policy
 

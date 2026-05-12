@@ -107,7 +107,8 @@ helper나 skill 등록은 여전히 사용자가 직접 opt-in 해야 한다.
 ## Team policy
 
 - 새 자동화/에이전트 PR에는 사용한 `wt` 명령과 exit code를 남긴다.
-- 사용자-facing 변경이면 `VERSION`, `docs/release/notes.md`, 관련 UX 문서를 같이 갱신한다.
+- 사용자-facing 변경이면 관련 스펙/UX 문서를 같이 갱신하고, PR title을 Conventional Commit 형식으로 작성한다.
+- 기능/수정 PR에서는 `CHANGELOG.md`와 release-please version 파일을 직접 bump 하지 않는다.
 
 ## References
 

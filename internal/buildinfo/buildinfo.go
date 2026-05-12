@@ -8,24 +8,22 @@ const (
 )
 
 // Version can be overridden at build time via -ldflags.
-var Version = "dev"
+var Version = "0.10.10" // x-release-please-version
 
 // EffectiveVersion returns a user-facing version string.
 //
-// For local/dev builds, Version may remain "dev".
-// For module installs (e.g. go install ...@latest), we infer the tagged
-// module version from build info when ldflags are not provided.
+// For module installs (e.g. go install ...@latest), prefer the tagged module
+// version from build info. Local builds fall back to the release-please-managed
+// source version, which can still be overridden by -ldflags.
 func EffectiveVersion() string {
-	if Version != "" && Version != "dev" {
-		return Version
-	}
-
 	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "dev"
+	if ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
 	}
-	if v := info.Main.Version; v != "" && v != "(devel)" {
-		return v
+	if Version != "" {
+		return Version
 	}
 	return "dev"
 }

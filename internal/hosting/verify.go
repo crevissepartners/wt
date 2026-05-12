@@ -42,27 +42,63 @@ func DetectProvider(remoteURL string) Provider {
 }
 
 func VerifyMerged(ctx context.Context, r runner.Runner, repoRoot string, provider Provider, branch string, baseRef string) (VerifyResult, error) {
+	if strings.TrimSpace(branch) == "" {
+		return VerifyResult{Provider: provider, Kind: kindForProvider(provider), Reason: "no-branch"}, nil
+	}
+
+	auth, err := VerifyAuth(ctx, r, repoRoot, provider)
+	if err != nil {
+		return VerifyResult{}, err
+	}
+	if auth.Reason != "" {
+		return auth, nil
+	}
+
+	return QueryMerged(ctx, r, repoRoot, provider, branch, baseRef)
+}
+
+func VerifyAuth(ctx context.Context, r runner.Runner, repoRoot string, provider Provider) (VerifyResult, error) {
 	switch provider {
 	case ProviderGitHub:
-		return verifyGitHubMerged(ctx, r, repoRoot, branch, baseRef)
+		return verifyGitHubAuth(ctx, r, repoRoot)
 	case ProviderGitLab:
-		return verifyGitLabMerged(ctx, r, repoRoot, branch, baseRef)
+		return verifyGitLabAuth(ctx, r, repoRoot)
 	default:
-		return VerifyResult{Provider: provider, Kind: "unknown", Reason: "unsupported-provider"}, nil
+		return VerifyResult{Provider: provider, Kind: kindForProvider(provider), Reason: "unsupported-provider"}, nil
 	}
 }
 
-func verifyGitHubMerged(ctx context.Context, r runner.Runner, repoRoot string, branch string, baseRef string) (VerifyResult, error) {
+func QueryMerged(ctx context.Context, r runner.Runner, repoRoot string, provider Provider, branch string, baseRef string) (VerifyResult, error) {
 	if strings.TrimSpace(branch) == "" {
-		return VerifyResult{Provider: ProviderGitHub, Kind: "pr", Reason: "no-branch"}, nil
+		return VerifyResult{Provider: provider, Kind: kindForProvider(provider), Reason: "no-branch"}, nil
 	}
 
+	switch provider {
+	case ProviderGitHub:
+		return queryGitHubMerged(ctx, r, repoRoot, branch, baseRef)
+	case ProviderGitLab:
+		return queryGitLabMerged(ctx, r, repoRoot, branch, baseRef)
+	default:
+		return VerifyResult{Provider: provider, Kind: kindForProvider(provider), Reason: "unsupported-provider"}, nil
+	}
+}
+
+func verifyGitHubAuth(ctx context.Context, r runner.Runner, repoRoot string) (VerifyResult, error) {
 	ghBin, ok := findGitHubCLI()
 	if !ok {
 		return VerifyResult{Provider: ProviderGitHub, Kind: "pr", Reason: "gh-auth-unavailable"}, nil
 	}
 
 	if _, err := r.Run(ctx, repoRoot, ghBin, "auth", "status"); err != nil {
+		return VerifyResult{Provider: ProviderGitHub, Kind: "pr", Reason: "gh-auth-unavailable"}, nil
+	}
+
+	return VerifyResult{Provider: ProviderGitHub, Kind: "pr"}, nil
+}
+
+func queryGitHubMerged(ctx context.Context, r runner.Runner, repoRoot string, branch string, baseRef string) (VerifyResult, error) {
+	ghBin, ok := findGitHubCLI()
+	if !ok {
 		return VerifyResult{Provider: ProviderGitHub, Kind: "pr", Reason: "gh-auth-unavailable"}, nil
 	}
 
@@ -95,17 +131,22 @@ func verifyGitHubMerged(ctx context.Context, r runner.Runner, repoRoot string, b
 	return result, nil
 }
 
-func verifyGitLabMerged(ctx context.Context, r runner.Runner, repoRoot string, branch string, baseRef string) (VerifyResult, error) {
-	if strings.TrimSpace(branch) == "" {
-		return VerifyResult{Provider: ProviderGitLab, Kind: "mr", Reason: "no-branch"}, nil
-	}
-
+func verifyGitLabAuth(ctx context.Context, r runner.Runner, repoRoot string) (VerifyResult, error) {
 	glabBin, ok := findGitLabCLI()
 	if !ok {
 		return VerifyResult{Provider: ProviderGitLab, Kind: "mr", Reason: "glab-auth-unavailable"}, nil
 	}
 
 	if _, err := r.Run(ctx, repoRoot, glabBin, "auth", "status"); err != nil {
+		return VerifyResult{Provider: ProviderGitLab, Kind: "mr", Reason: "glab-auth-unavailable"}, nil
+	}
+
+	return VerifyResult{Provider: ProviderGitLab, Kind: "mr"}, nil
+}
+
+func queryGitLabMerged(ctx context.Context, r runner.Runner, repoRoot string, branch string, baseRef string) (VerifyResult, error) {
+	glabBin, ok := findGitLabCLI()
+	if !ok {
 		return VerifyResult{Provider: ProviderGitLab, Kind: "mr", Reason: "glab-auth-unavailable"}, nil
 	}
 
@@ -137,6 +178,17 @@ func verifyGitLabMerged(ctx context.Context, r runner.Runner, repoRoot string, b
 		result.URL = strings.TrimSpace(mrs[0].WebURL)
 	}
 	return result, nil
+}
+
+func kindForProvider(provider Provider) string {
+	switch provider {
+	case ProviderGitHub:
+		return "pr"
+	case ProviderGitLab:
+		return "mr"
+	default:
+		return "unknown"
+	}
 }
 
 func findGitHubCLI() (string, bool) {

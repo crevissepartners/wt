@@ -517,25 +517,6 @@ branch refs/heads/feature-x
 					args:    []string{"pr", "list", "--state", "merged", "--head", "feature-x", "--json", "number,title,url", "--limit", "1", "--base", "main"},
 					res:     runner.Result{Stdout: []byte(`[{"number":1,"title":"merged feature","url":"https://github.com/crevissepartners/wt/pull/1"}]`), ExitCode: 0},
 				},
-				{
-					workDir: repo,
-					name:    "git",
-					args:    []string{"merge-base", "--is-ancestor", "refs/heads/feature-x", "main"},
-					res:     runner.Result{ExitCode: 1},
-					err:     errors.New("exit 1"),
-				},
-				{
-					workDir: repo,
-					name:    ghBin,
-					args:    []string{"auth", "status"},
-					res:     runner.Result{ExitCode: 0},
-				},
-				{
-					workDir: repo,
-					name:    ghBin,
-					args:    []string{"pr", "list", "--state", "merged", "--head", "feature-x", "--json", "number,title,url", "--limit", "1", "--base", "main"},
-					res:     runner.Result{Stdout: []byte(`[{"number":1,"title":"merged feature","url":"https://github.com/crevissepartners/wt/pull/1"}]`), ExitCode: 0},
-				},
 			},
 		},
 		Cwd: cwd,
@@ -817,6 +798,194 @@ branch refs/heads/feature-x
 	}
 }
 
+func TestList_VerifyHosting_TextReusesPrecomputedInfoForNoteAndRows(t *testing.T) {
+	const cwd = "/cwd"
+	const repo = "/repo"
+	const ghBin = "/mock/bin/gh"
+	t.Setenv("WT_GH_BIN", ghBin)
+
+	wtPath := filepath.Join(t.TempDir(), "feature-x")
+	if err := os.MkdirAll(filepath.Join(wtPath, ".git"), 0o755); err != nil {
+		t.Fatalf("failed to create .git dir: %v", err)
+	}
+
+	porcelain := strings.TrimSpace(`
+worktree `+wtPath+`
+HEAD abcdefabcdefabcdefabcdefabcdefabcdefabcd
+branch refs/heads/feature-x
+`) + "\n"
+
+	r := &fakeRunner{
+		t: t,
+		calls: []fakeCall{
+			{
+				workDir: cwd,
+				name:    "git",
+				args:    []string{"rev-parse", "--show-toplevel"},
+				res:     runner.Result{Stdout: []byte(repo + "\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"worktree", "list", "--porcelain"},
+				res:     runner.Result{Stdout: []byte(porcelain), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--path-format=absolute", "--git-common-dir"},
+				res:     runner.Result{Stdout: []byte(repo + "/.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--verify", "--quiet", "main^{commit}"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"remote", "get-url", "origin"},
+				res:     runner.Result{Stdout: []byte("git@github.com:crevissepartners/wt.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    ghBin,
+				args:    []string{"auth", "status"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    ghBin,
+				args:    []string{"pr", "list", "--state", "merged", "--head", "feature-x", "--json", "number,title,url", "--limit", "1", "--base", "main"},
+				res:     runner.Result{ExitCode: 1},
+				err:     errors.New("exit 1"),
+			},
+		},
+	}
+	cmd, stdout, stderr := newListCmdWithDeps(t, &deps{
+		Runner: r,
+		Cwd:    cwd,
+	})
+
+	cmd.SetArgs([]string{"--verify-hosting", "--base", "main"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if r.i != len(r.calls) {
+		t.Fatalf("runner consumed %d calls, want %d", r.i, len(r.calls))
+	}
+	if !strings.Contains(stderr.String(), "note: hosting verify skipped (gh PR query failed)") {
+		t.Fatalf("stderr = %q, want gh PR query failure note", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), wtPath) {
+		t.Fatalf("stdout = %q, want worktree row", stdout.String())
+	}
+}
+
+func TestList_VerifyHosting_SameBranchUsesOneGitHubLookup(t *testing.T) {
+	const cwd = "/cwd"
+	const repo = "/repo"
+	const ghBin = "/mock/bin/gh"
+	t.Setenv("WT_GH_BIN", ghBin)
+
+	wtPath1 := filepath.Join(t.TempDir(), "feature-x-1")
+	wtPath2 := filepath.Join(t.TempDir(), "feature-x-2")
+	for _, path := range []string{wtPath1, wtPath2} {
+		if err := os.MkdirAll(filepath.Join(path, ".git"), 0o755); err != nil {
+			t.Fatalf("failed to create .git dir: %v", err)
+		}
+	}
+
+	porcelain := strings.TrimSpace(`
+worktree `+wtPath1+`
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/feature-x
+
+worktree `+wtPath2+`
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feature-x
+`) + "\n"
+
+	r := &fakeRunner{
+		t: t,
+		calls: []fakeCall{
+			{
+				workDir: cwd,
+				name:    "git",
+				args:    []string{"rev-parse", "--show-toplevel"},
+				res:     runner.Result{Stdout: []byte(repo + "\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"worktree", "list", "--porcelain"},
+				res:     runner.Result{Stdout: []byte(porcelain), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--path-format=absolute", "--git-common-dir"},
+				res:     runner.Result{Stdout: []byte(repo + "/.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--verify", "--quiet", "main^{commit}"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"remote", "get-url", "origin"},
+				res:     runner.Result{Stdout: []byte("git@github.com:crevissepartners/wt.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    ghBin,
+				args:    []string{"auth", "status"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    ghBin,
+				args:    []string{"pr", "list", "--state", "merged", "--head", "feature-x", "--json", "number,title,url", "--limit", "1", "--base", "main"},
+				res:     runner.Result{Stdout: []byte(`[{"number":42,"title":"feature x","url":"https://github.com/crevissepartners/wt/pull/42"}]`), ExitCode: 0},
+			},
+		},
+	}
+	cmd, stdout, stderr := newListCmdWithDeps(t, &deps{
+		Runner: r,
+		Cwd:    cwd,
+	})
+
+	cmd.SetArgs([]string{"--json", "--verify-hosting", "--base", "main"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if r.i != len(r.calls) {
+		t.Fatalf("runner consumed %d calls, want %d", r.i, len(r.calls))
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	got := decodeJSONObjects(t, stdout.Bytes())
+	if len(got) != 2 {
+		t.Fatalf("len(json) = %d, want 2", len(got))
+	}
+	for i := range got {
+		if got[i]["mergedViaHosting"] != true {
+			t.Fatalf("json[%d].mergedViaHosting = %#v, want true", i, got[i]["mergedViaHosting"])
+		}
+		if got[i]["hostingChangeURL"] != "https://github.com/crevissepartners/wt/pull/42" {
+			t.Fatalf("json[%d].hostingChangeURL = %#v, want PR URL", i, got[i]["hostingChangeURL"])
+		}
+		if got[i]["hostingChangeUrl"] != got[i]["hostingChangeURL"] {
+			t.Fatalf("json[%d].hostingChangeUrl = %#v, want legacy alias", i, got[i]["hostingChangeUrl"])
+		}
+	}
+}
+
 func TestList_VerifyHosting_JSONGitLabMergedMR(t *testing.T) {
 	const cwd = "/cwd"
 	const repo = "/repo"
@@ -914,6 +1083,112 @@ branch refs/heads/feature-x
 	}
 	if got[0]["hostingChangeUrl"] != got[0]["hostingChangeURL"] {
 		t.Fatalf("hostingChangeUrl = %#v, want legacy alias to match hostingChangeURL", got[0]["hostingChangeUrl"])
+	}
+}
+
+func TestList_VerifyHosting_GitLabAuthRunsOnceForMultipleBranches(t *testing.T) {
+	const cwd = "/cwd"
+	const repo = "/repo"
+	const glabBin = "/mock/bin/glab"
+	t.Setenv("WT_GLAB_BIN", glabBin)
+
+	wtPath1 := filepath.Join(t.TempDir(), "feature-a")
+	wtPath2 := filepath.Join(t.TempDir(), "feature-b")
+	for _, path := range []string{wtPath1, wtPath2} {
+		if err := os.MkdirAll(filepath.Join(path, ".git"), 0o755); err != nil {
+			t.Fatalf("failed to create .git dir: %v", err)
+		}
+	}
+
+	porcelain := strings.TrimSpace(`
+worktree `+wtPath1+`
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/feature-a
+
+worktree `+wtPath2+`
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feature-b
+`) + "\n"
+
+	r := &fakeRunner{
+		t: t,
+		calls: []fakeCall{
+			{
+				workDir: cwd,
+				name:    "git",
+				args:    []string{"rev-parse", "--show-toplevel"},
+				res:     runner.Result{Stdout: []byte(repo + "\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"worktree", "list", "--porcelain"},
+				res:     runner.Result{Stdout: []byte(porcelain), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--path-format=absolute", "--git-common-dir"},
+				res:     runner.Result{Stdout: []byte(repo + "/.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--verify", "--quiet", "main^{commit}"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"remote", "get-url", "origin"},
+				res:     runner.Result{Stdout: []byte("git@gitlab.com:team/wt.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    glabBin,
+				args:    []string{"auth", "status"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    glabBin,
+				args:    []string{"api", "projects/:fullpath/merge_requests?state=merged&source_branch=feature-a&per_page=1&order_by=updated_at&sort=desc&target_branch=main"},
+				res:     runner.Result{Stdout: []byte(`[]`), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    glabBin,
+				args:    []string{"api", "projects/:fullpath/merge_requests?state=merged&source_branch=feature-b&per_page=1&order_by=updated_at&sort=desc&target_branch=main"},
+				res:     runner.Result{Stdout: []byte(`[]`), ExitCode: 0},
+			},
+		},
+	}
+	cmd, stdout, stderr := newListCmdWithDeps(t, &deps{
+		Runner: r,
+		Cwd:    cwd,
+	})
+
+	cmd.SetArgs([]string{"--json", "--verify-hosting", "--base", "main"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if r.i != len(r.calls) {
+		t.Fatalf("runner consumed %d calls, want %d", r.i, len(r.calls))
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	got := decodeJSONObjects(t, stdout.Bytes())
+	if len(got) != 2 {
+		t.Fatalf("len(json) = %d, want 2", len(got))
+	}
+	for i := range got {
+		if got[i]["hostingProvider"] != "gitlab" || got[i]["hostingKind"] != "mr" {
+			t.Fatalf("json[%d] hosting fields = %#v", i, got[i])
+		}
+		if got[i]["mergedViaHosting"] != false {
+			t.Fatalf("json[%d].mergedViaHosting = %#v, want false", i, got[i]["mergedViaHosting"])
+		}
 	}
 }
 
@@ -1210,19 +1485,6 @@ branch refs/heads/feature-x
 					name:    "git",
 					args:    []string{"remote", "get-url", "origin"},
 					res:     runner.Result{Stdout: []byte("git@gitlab.com:team/wt.git\n"), ExitCode: 0},
-				},
-				{
-					workDir: repo,
-					name:    glabBin,
-					args:    []string{"auth", "status"},
-					res:     runner.Result{ExitCode: 0},
-				},
-				{
-					workDir: repo,
-					name:    glabBin,
-					args:    []string{"api", "projects/:fullpath/merge_requests?state=merged&source_branch=feature-x&per_page=1&order_by=updated_at&sort=desc&target_branch=main"},
-					res:     runner.Result{ExitCode: 1},
-					err:     errors.New("exit 1"),
 				},
 				{
 					workDir: repo,

@@ -94,22 +94,28 @@ func newListCmd() *cobra.Command {
 					verifyCtx.RemoteURL = remoteURL
 					verifyCtx.VerifyHosting = true
 					verifyCtx.HostingProvider = hosting.DetectProvider(remoteURL)
+					verifyCtx.HostingCache = newHostingVerifyCache()
 				}
+			}
+
+			verifyInfos, err := verifyWorktrees(cmd, d, verifyCtx, wts)
+			if err != nil {
+				return err
 			}
 
 			if jsonOut {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				return enc.Encode(toJSONWorktrees(cmd, d, wts, verifyCtx, paths, filters))
+				return enc.Encode(toJSONWorktrees(wts, verifyCtx, verifyInfos, paths, filters))
 			}
 
-			hostingNote := formatHostingVerifyNote(wts, d, verifyCtx)
+			hostingNote := formatHostingVerifyNote(verifyCtx, verifyInfos)
 			if hostingNote != "" {
 				fmt.Fprintln(cmd.ErrOrStderr(), hostingNote)
 			}
 
-			for _, wt := range wts {
-				info, _ := verifyWorktree(cmd, d, verifyCtx, wt)
+			for i, wt := range wts {
+				info := verifyInfoAt(verifyInfos, i)
 				signals := deriveListSignals(wt, info, paths)
 				if !signalsMatchListFilters(signals, filters) {
 					continue
@@ -173,6 +179,57 @@ type listVerifyContext struct {
 	VerifyLocal     bool
 	VerifyHosting   bool
 	HostingProvider hosting.Provider
+	HostingCache    *hostingVerifyCache
+}
+
+type hostingVerifyCache struct {
+	auth   map[hosting.Provider]hosting.VerifyResult
+	merged map[hostingMergeCacheKey]hosting.VerifyResult
+}
+
+type hostingMergeCacheKey struct {
+	Provider hosting.Provider
+	Branch   string
+	BaseRef  string
+}
+
+func newHostingVerifyCache() *hostingVerifyCache {
+	return &hostingVerifyCache{
+		auth:   map[hosting.Provider]hosting.VerifyResult{},
+		merged: map[hostingMergeCacheKey]hosting.VerifyResult{},
+	}
+}
+
+func (c *hostingVerifyCache) verifyMerged(ctx context.Context, d *deps, verifyCtx *listVerifyContext, branch string) (hosting.VerifyResult, error) {
+	if c == nil {
+		return hosting.VerifyMerged(ctx, d.Runner, verifyCtx.RepoRoot, verifyCtx.HostingProvider, branch, verifyCtx.BaseRef)
+	}
+
+	provider := verifyCtx.HostingProvider
+	auth, ok := c.auth[provider]
+	if !ok {
+		var err error
+		auth, err = hosting.VerifyAuth(ctx, d.Runner, verifyCtx.RepoRoot, provider)
+		if err != nil {
+			return hosting.VerifyResult{}, err
+		}
+		c.auth[provider] = auth
+	}
+	if auth.Reason != "" {
+		return auth, nil
+	}
+
+	key := hostingMergeCacheKey{Provider: provider, Branch: branch, BaseRef: verifyCtx.BaseRef}
+	if result, ok := c.merged[key]; ok {
+		return result, nil
+	}
+
+	result, err := hosting.QueryMerged(ctx, d.Runner, verifyCtx.RepoRoot, provider, branch, verifyCtx.BaseRef)
+	if err != nil {
+		return hosting.VerifyResult{}, err
+	}
+	c.merged[key] = result
+	return result, nil
 }
 
 type verifyInfo struct {
@@ -331,10 +388,10 @@ func (jwt jsonWorktree) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func toJSONWorktrees(cmd *cobra.Command, d *deps, wts []worktree.Worktree, verifyCtx *listVerifyContext, paths listPaths, filters listFilters) []jsonWorktree {
+func toJSONWorktrees(wts []worktree.Worktree, verifyCtx *listVerifyContext, verifyInfos []*verifyInfo, paths listPaths, filters listFilters) []jsonWorktree {
 	out := make([]jsonWorktree, 0, len(wts))
-	for _, wt := range wts {
-		info, _ := verifyWorktree(cmd, d, verifyCtx, wt)
+	for i, wt := range wts {
+		info := verifyInfoAt(verifyInfos, i)
 		signals := deriveListSignals(wt, info, paths)
 		if !signalsMatchListFilters(signals, filters) {
 			continue
@@ -375,6 +432,29 @@ func toJSONWorktrees(cmd *cobra.Command, d *deps, wts []worktree.Worktree, verif
 		out = append(out, jwt)
 	}
 	return out
+}
+
+func verifyWorktrees(cmd *cobra.Command, d *deps, verifyCtx *listVerifyContext, wts []worktree.Worktree) ([]*verifyInfo, error) {
+	if verifyCtx == nil {
+		return nil, nil
+	}
+
+	out := make([]*verifyInfo, len(wts))
+	for i, wt := range wts {
+		info, err := verifyWorktree(cmd, d, verifyCtx, wt)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = info
+	}
+	return out, nil
+}
+
+func verifyInfoAt(infos []*verifyInfo, i int) *verifyInfo {
+	if i < 0 || i >= len(infos) {
+		return nil
+	}
+	return infos[i]
 }
 
 func verifyWorktree(cmd *cobra.Command, d *deps, verifyCtx *listVerifyContext, wt worktree.Worktree) (*verifyInfo, error) {
@@ -424,7 +504,7 @@ func verifyWorktreeWithContext(ctx context.Context, d *deps, verifyCtx *listVeri
 		if wt.Branch == "" || wt.Detached {
 			hostingReason = "no-branch"
 		} else {
-			result, err := hosting.VerifyMerged(ctx, d.Runner, verifyCtx.RepoRoot, verifyCtx.HostingProvider, strings.TrimPrefix(wt.Branch, "refs/heads/"), verifyCtx.BaseRef)
+			result, err := verifyCtx.HostingCache.verifyMerged(ctx, d, verifyCtx, strings.TrimPrefix(wt.Branch, "refs/heads/"))
 			if err != nil {
 				return nil, err
 			}
@@ -516,14 +596,13 @@ func formatWorktreeLine(wt worktree.Worktree, info *verifyInfo, signals listSign
 	return fmt.Sprintf("%s  %s  %s  %s  [%s]", base, branch, head, wt.Path, strings.Join(flags, ","))
 }
 
-func formatHostingVerifyNote(wts []worktree.Worktree, d *deps, verifyCtx *listVerifyContext) string {
-	if verifyCtx == nil || !verifyCtx.VerifyHosting || d == nil {
+func formatHostingVerifyNote(verifyCtx *listVerifyContext, infos []*verifyInfo) string {
+	if verifyCtx == nil || !verifyCtx.VerifyHosting {
 		return ""
 	}
 
-	for _, wt := range wts {
-		info, err := verifyWorktreeWithContext(context.Background(), d, verifyCtx, wt)
-		if err != nil || info == nil {
+	for _, info := range infos {
+		if info == nil {
 			continue
 		}
 		switch info.HostingReason {

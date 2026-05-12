@@ -383,12 +383,6 @@ branch refs/heads/feature-remove
 				{
 					workDir: repo,
 					name:    ghBin,
-					args:    []string{"auth", "status"},
-					res:     runner.Result{ExitCode: 0},
-				},
-				{
-					workDir: repo,
-					name:    ghBin,
 					args:    []string{"pr", "list", "--state", "merged", "--head", "feature-remove", "--json", "number,title,url", "--limit", "1", "--base", "main"},
 					res:     runner.Result{Stdout: []byte(`[{"number":42,"title":"feature remove","url":"https://github.com/crevissepartners/wt/pull/42"}]`), ExitCode: 0},
 				},
@@ -447,6 +441,135 @@ branch refs/heads/feature-remove
 	}
 	if got[1].Reason != "merged-hosting:github#42" {
 		t.Fatalf("reason = %q, want hosting merge reason", got[1].Reason)
+	}
+}
+
+func TestCleanup_JSONHostingCacheReusesDuplicateBranchLookup(t *testing.T) {
+	const cwd = "/cwd"
+	const repo = "/repo"
+	const ghBin = "/mock/bin/gh"
+	t.Setenv("WT_GH_BIN", ghBin)
+
+	removePath1 := filepath.Join(t.TempDir(), "feature-x-1")
+	removePath2 := filepath.Join(t.TempDir(), "feature-x-2")
+	for _, path := range []string{removePath1, removePath2} {
+		if err := os.MkdirAll(filepath.Join(path, ".git"), 0o755); err != nil {
+			t.Fatalf("failed to create remove worktree: %v", err)
+		}
+	}
+
+	porcelain := strings.TrimSpace(`
+worktree `+removePath1+`
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/feature-x
+
+worktree `+removePath2+`
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feature-x
+`) + "\n"
+
+	r := &fakeRunner{
+		t: t,
+		calls: []fakeCall{
+			{
+				workDir: cwd,
+				name:    "git",
+				args:    []string{"rev-parse", "--show-toplevel"},
+				res:     runner.Result{Stdout: []byte(repo + "\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"worktree", "list", "--porcelain"},
+				res:     runner.Result{Stdout: []byte(porcelain), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"},
+				res:     runner.Result{Stdout: []byte("refs/remotes/origin/main\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--verify", "--quiet", "origin/main^{commit}"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"remote", "get-url", "origin"},
+				res:     runner.Result{Stdout: []byte("git@github.com:crevissepartners/wt.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"rev-parse", "--path-format=absolute", "--git-common-dir"},
+				res:     runner.Result{Stdout: []byte(repo + "/.git\n"), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"merge-base", "--is-ancestor", "refs/heads/feature-x", "origin/main"},
+				res:     runner.Result{ExitCode: 1},
+				err:     assertErr("exit 1"),
+			},
+			{
+				workDir: repo,
+				name:    ghBin,
+				args:    []string{"auth", "status"},
+				res:     runner.Result{ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    ghBin,
+				args:    []string{"pr", "list", "--state", "merged", "--head", "feature-x", "--json", "number,title,url", "--limit", "1", "--base", "main"},
+				res:     runner.Result{Stdout: []byte(`[{"number":42,"title":"feature x","url":"https://github.com/crevissepartners/wt/pull/42"}]`), ExitCode: 0},
+			},
+			{
+				workDir: repo,
+				name:    "git",
+				args:    []string{"merge-base", "--is-ancestor", "refs/heads/feature-x", "origin/main"},
+				res:     runner.Result{ExitCode: 1},
+				err:     assertErr("exit 1"),
+			},
+		},
+	}
+
+	root := newRootCmd()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"cleanup", "--json"})
+	root.SetContext(context.WithValue(context.Background(), depsKey{}, &deps{
+		Runner: r,
+		Cwd:    cwd,
+	}))
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if r.i != len(r.calls) {
+		t.Fatalf("runner consumed %d calls, want %d", r.i, len(r.calls))
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+
+	got := decodeJSONObjects(t, stdout.Bytes())
+	if len(got) != 2 {
+		t.Fatalf("len(json) = %d, want 2", len(got))
+	}
+	for i := range got {
+		if got[i]["mergedViaHosting"] != true {
+			t.Fatalf("json[%d].mergedViaHosting = %#v, want true", i, got[i]["mergedViaHosting"])
+		}
+		if got[i]["hostingChangeNumber"] != float64(42) {
+			t.Fatalf("json[%d].hostingChangeNumber = %#v, want 42", i, got[i]["hostingChangeNumber"])
+		}
+		if got[i]["hostingChangeUrl"] != "https://github.com/crevissepartners/wt/pull/42" {
+			t.Fatalf("json[%d].hostingChangeUrl = %#v, want PR URL", i, got[i]["hostingChangeUrl"])
+		}
 	}
 }
 
@@ -533,13 +656,6 @@ branch refs/heads/feature-x
 					workDir: repo,
 					name:    "git",
 					args:    []string{"merge-base", "--is-ancestor", "refs/heads/feature-x", "origin/main"},
-					res:     runner.Result{ExitCode: 1},
-					err:     assertErr("exit 1"),
-				},
-				{
-					workDir: repo,
-					name:    ghBin,
-					args:    []string{"auth", "status"},
 					res:     runner.Result{ExitCode: 1},
 					err:     assertErr("exit 1"),
 				},

@@ -8,7 +8,7 @@ const (
 )
 
 // Version can be overridden at build time via -ldflags.
-var Version = "0.10.10" // x-release-please-version
+var Version = "0.10.11" // x-release-please-version
 
 // EffectiveVersion returns a user-facing version string.
 //

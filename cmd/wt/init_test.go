@@ -73,6 +73,50 @@ func TestInit_Fish(t *testing.T) {
 	}
 }
 
+func TestInit_PowerShell(t *testing.T) {
+	t.Parallel()
+
+	cmd := newInitCmd()
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"powershell"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	out := stdout.String()
+
+	wants := []string{
+		`Bootstrap (first time) via absolute path:`,
+		`& "$env:USERPROFILE\go\bin\wt.exe" init powershell | Out-String | Invoke-Expression`,
+		`& "$env:USERPROFILE\go\bin\wt.exe" init powershell >> $PROFILE`,
+		"wtp init powershell | Out-String | Invoke-Expression",
+		"# Optional completion setup: see docs/ux/shell.md",
+		"$wtBinFallback = '",
+		`& where.exe wt 2>$null`,
+		`-notlike '*\WindowsApps\*'`,
+		"$Global:WtBin = $candidate",
+		"if (-not $Global:WtBin -and $wtBinFallback -and (Test-Path -LiteralPath $wtBinFallback)) {",
+		"$Global:WtBin = $wtBinFallback",
+		"Set-Alias -Name wtp -Value $Global:WtBin -Scope Global",
+		"function global:wtr {",
+		"function global:wtg {",
+		"Set-Alias wcd wtg -Scope Global",
+		"Set-Location -LiteralPath $root.Trim()",
+		"& $Global:WtBin root",
+		"& $Global:WtBin path @Arguments",
+	}
+	for _, want := range wants {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout missing %q\ngot:\n%s", want, out)
+		}
+	}
+}
+
 func TestInit_Bash(t *testing.T) {
 	t.Parallel()
 

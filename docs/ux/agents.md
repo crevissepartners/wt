@@ -21,6 +21,8 @@ wt prune
 wt cleanup
 ```
 
+> Windows (PowerShell) 환경에서 동작하는 에이전트는 이 흐름의 `wt`를 `wtp`로 호출한다 (`wtp list`, `wtp path --create ...`). Windows Terminal alias와 충돌하지 않게 `wt init powershell` 스니펫이 노출하는 별칭이다.
+
 `wt`가 대신하지 않는 것:
 
 - 에이전트 설치/인증

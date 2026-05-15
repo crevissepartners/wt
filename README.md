@@ -13,6 +13,8 @@
 
 ## Installation
 
+### macOS / Linux
+
 권장 설치(릴리즈 태그 기준):
 
 ```sh
@@ -25,13 +27,36 @@ go install github.com/crevissepartners/wt/cmd/wt@latest
 go install ./cmd/wt
 ```
 
-버전 확인:
+### Windows (PowerShell)
+
+Windows Terminal이 `wt` 명령을 App Execution Alias로 점유합니다. `wt init powershell`이 출력하는 helper는 `where.exe`로 진짜 `wt.exe`를 찾고 **`wtp`** 별칭으로 노출하므로, alias를 직접 끄지 않아도 동작합니다.
+
+```powershell
+# 1) Go가 설치되어 있어야 합니다 (https://go.dev/dl/).
+go install github.com/crevissepartners/wt/cmd/wt@latest
+
+# 2) 첫 설정은 절대경로로 한 번만 (이때는 'wt'가 WT alias에 가려져 있으므로):
+& "$env:USERPROFILE\go\bin\wt.exe" init powershell >> $PROFILE
+. $PROFILE
+
+# 3) 이후엔 wtp / wtg / wtr / wcd 그대로 사용:
+wtp --version
+wtp list
+wtg feature/login   # cd helper (worktree 경로로 이동)
+```
+
+별도 옵션으로 Windows Terminal alias를 끄고 싶다면 설정 → 앱 → 고급 앱 설정 → 앱 실행 별칭에서 "Windows Terminal (wt.exe)"을 Off. 끄면 `wt`도 그대로 동작합니다.
+
+### 버전 확인
 
 ```sh
-wt --version
+wt --version       # macOS/Linux
+wtp --version      # Windows (PowerShell)
 ```
 
 ## Quick Start
+
+> Windows (PowerShell)에서는 아래 예시의 `wt`를 `wtp`로 바꿔 읽으세요 (`wtp list`, `wtp path ...`). Windows Terminal alias와 충돌을 피하기 위한 별칭입니다. `wtr`/`wtg`/`wcd` cd helper는 그대로입니다.
 
 ```sh
 # 1) 현재 repo의 worktree 상태 확인
@@ -55,6 +80,12 @@ eval "$(wt init zsh)"
 wtg feature/login   # == cd "$(wt path feature/login)"
 ```
 
+```powershell
+# PowerShell (after Installation bootstrap; loads wtp/wtr/wtg/wcd)
+. $PROFILE
+wtg feature/login   # == Set-Location (wt path feature/login)
+```
+
 ## Core Commands
 
 | Command | 용도 |
@@ -69,7 +100,7 @@ wtg feature/login   # == cd "$(wt path feature/login)"
 | `wt cleanup` | 추천 액션(prune/remove) 일괄 처리 |
 | `wt doctor` | 환경/설치/컨텍스트 진단 |
 | `wt upgrade` | 릴리즈 버전으로 자체 업그레이드 |
-| `wt init <shell>` | 셸 함수 출력 (`wtr`, `wtg`, `wcd`) |
+| `wt init <shell>` | 셸 함수 출력 (`wtr`, `wtg`, `wcd`; `zsh`/`bash`/`fish`/`powershell`) |
 
 상세 동작/옵션은 [docs/spec/cli.md](docs/spec/cli.md)를 참고하세요.
 
@@ -115,6 +146,7 @@ wt upgrade
 
 - `wt upgrade`는 `PATH`로 찾은 설치된 `wt`만 업그레이드한다.
 - 레포 안의 `./wt` 같은 로컬 빌드 바이너리에서 실행하면 실패하고 `wt upgrade`로 다시 실행하라고 안내한다.
+- Windows에서는 alias 충돌로 `wt upgrade` 대신 `wtp upgrade`를 쓴다 (또는 alias를 끈 상태라면 `wt upgrade`).
 
 특정 버전으로 업그레이드:
 

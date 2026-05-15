@@ -15,6 +15,12 @@
 eval "$(wt init zsh)"
 ```
 
+PowerShell (Windows Terminal alias 충돌을 피하기 위해 첫 호출은 절대경로):
+
+```powershell
+& "$env:USERPROFILE\go\bin\wt.exe" init powershell | Out-String | Invoke-Expression
+```
+
 ## `wt init <shell>`
 
 `wt init`은 rc 파일을 직접 수정하지 않는다.
@@ -32,6 +38,8 @@ helper 범위:
 - `wtr`: 현재 Git 컨텍스트의 primary repo root로 이동
 - `wtg`: query로 worktree를 찾아 이동
 - `wcd`: `wtg`와 동일 동작의 별칭 helper
+
+PowerShell의 경우 Windows Terminal의 `wt` App Execution Alias와 충돌하므로, init 출력은 `where.exe`로 진짜 `wt.exe`를 찾아 `Set-Alias wtp`로 노출한다. 즉 Windows 사용자는 `wt list` 대신 `wtp list`를 쓴다. `wtr`/`wtg`/`wcd`는 동일하다.
 
 자동으로 하지 않는 것:
 
@@ -59,7 +67,20 @@ fish:
 wt init fish | source
 ```
 
-영구 적용은 각 셸 rc에 같은 출력을 append 하면 된다.
+PowerShell (Windows Terminal alias 충돌을 피하려고 첫 호출은 절대경로):
+
+```powershell
+& "$env:USERPROFILE\go\bin\wt.exe" init powershell | Out-String | Invoke-Expression
+```
+
+영구 적용은 각 셸 rc에 같은 출력을 append 하면 된다. PowerShell은 `$PROFILE`에 append한다(첫 회는 절대경로, 이후엔 `wtp`):
+
+```powershell
+& "$env:USERPROFILE\go\bin\wt.exe" init powershell >> $PROFILE   # 첫 회
+wtp init powershell >> $PROFILE                                   # 이후 갱신
+```
+
+스니펫은 `$wtBinFallback`에 init을 실행한 `wt.exe` 절대경로를 embed 한다. `$env:USERPROFILE\go\bin`이 PATH에 없어 `where.exe`가 진짜 `wt.exe`를 못 찾는 경우 이 fallback이 사용된다.
 
 ## Install completion
 
@@ -91,6 +112,14 @@ source ~/.bash_completion.d/wt
 mkdir -p ~/.config/fish/completions
 wt completion fish > ~/.config/fish/completions/wt.fish
 ```
+
+### PowerShell
+
+```powershell
+wt completion powershell | Out-String | Invoke-Expression
+```
+
+영구 적용은 `$PROFILE`에 append한다(예: `wt completion powershell >> $PROFILE`). Cobra 기본 completion은 `wtg`/`wcd` 별칭에는 자동 연결되지 않으므로, 탭 완성은 `wt path <TAB>`을 직접 사용한다.
 
 ## Completion scope
 

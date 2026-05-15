@@ -366,12 +366,18 @@ TUI 규칙:
 - `zsh`
 - `bash`
 - `fish`
+- `powershell`
 
 규칙:
 
 - rc 파일을 자동 수정하지 않는다.
-- 출력 상단 주석으로 opt-in 적용 경로를 짧게 안내한다(즉시 적용, rc 영구 적용, shell 문서 위치).
+- 출력 상단 주석으로 opt-in 적용 경로를 짧게 안내한다(즉시 적용, rc/`$PROFILE` 영구 적용, shell 문서 위치).
 - 현재 출력에는 `wtr`, `wtg`, `wcd`가 포함된다.
-- `wtr`는 `wt root`, `wtg`와 `wcd`는 `wt path`를 호출해 셸이 직접 `cd`하도록 연결한다.
+- `wtr`는 `wt root`, `wtg`와 `wcd`는 `wt path`를 호출해 셸이 직접 `cd`(PowerShell의 경우 `Set-Location`)하도록 연결한다.
 - `wt init zsh`에는 `_wt` completion이 설치된 경우 `wtg`와 `wcd`를 `wt path` completion에 연결하는 bridge도 포함된다.
+- `wt init powershell`은 Windows Terminal의 `wt` App Execution Alias 충돌을 우회한다:
+  - 출력 스니펫이 `where.exe wt`로 PATH 상의 모든 `wt` 후보 중 `\WindowsApps\` 경로를 제외한 첫 항목을 `$Global:WtBin`에 캐시한다.
+  - `Set-Alias -Name wtp -Value $Global:WtBin -Scope Global`로 CLI를 **`wtp`** 별칭으로 노출한다. Windows 사용자는 `wt list` 대신 `wtp list`를 호출한다.
+  - `wtr`/`wtg`는 `function global:` 정의로 caller scope에 등록되며 `$Global:WtBin`을 통해 binary를 호출한다. `wcd`는 `wtg`의 alias.
+  - 부트스트랩 시점에는 `wt` alias가 Terminal로 가려져 있을 수 있으므로, 첫 호출은 절대경로(예: `& "$env:USERPROFILE\go\bin\wt.exe" init powershell`)로 한다. 스니펫 헤더 주석이 동일하게 안내한다.
 - completion 설치는 별도 opt-in이며 `wt completion <shell>` 기반이다. 자동 설치/자동 로드는 수행하지 않는다.

@@ -203,6 +203,125 @@ func TestUpgrade_ResolveLatestVersionError(t *testing.T) {
 	}
 }
 
+func TestUpgrade_RefusesExecPathInWindowsApps(t *testing.T) {
+	t.Parallel()
+
+	d := &deps{
+		Cwd: "/repo",
+		Executable: func() (string, error) {
+			// Simulate the post-botched-upgrade state: a real wt.exe binary
+			// sitting in the Windows Terminal App Execution Alias slot.
+			return `/home/me/AppData/Local/Microsoft/WindowsApps/wt.exe`, nil
+		},
+		LookPath: func(file string) (string, error) {
+			return `/home/me/AppData/Local/Microsoft/WindowsApps/wt.exe`, nil
+		},
+		InstallWithGo: func(_ context.Context, _ string, _ string, _ string) (runner.Result, error) {
+			t.Fatal("InstallWithGo should not be invoked when execPath is under WindowsApps")
+			return runner.Result{}, nil
+		},
+	}
+
+	root := newRootCmd()
+	root.SetArgs([]string{"upgrade"})
+	root.SetContext(context.WithValue(context.Background(), depsKey{}, d))
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var exitErr *exitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("err = %#v, want usage error", err)
+	}
+	if !strings.Contains(err.Error(), "refusing to upgrade binary under WindowsApps") {
+		t.Fatalf("err = %q, want WindowsApps refuse message", err.Error())
+	}
+}
+
+func TestUpgrade_RejectsWindowsExeBinary(t *testing.T) {
+	t.Parallel()
+
+	d := &deps{
+		Cwd: "/repo",
+		Executable: func() (string, error) {
+			return "/repo/wt.exe", nil
+		},
+		LookPath: func(file string) (string, error) {
+			if file != "wt" {
+				t.Fatalf("file = %q, want wt", file)
+			}
+			return "/usr/local/bin/wt.exe", nil
+		},
+	}
+
+	root := newRootCmd()
+	root.SetArgs([]string{"upgrade"})
+	root.SetContext(context.WithValue(context.Background(), depsKey{}, d))
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var exitErr *exitError
+	if !errors.As(err, &exitErr) || exitErr.Code != 2 {
+		t.Fatalf("err = %#v, want usage error", err)
+	}
+	// The "refuse non-installed binary" guard must trigger even when basename
+	// is `wt.exe`, not just `wt`.
+	if !strings.Contains(err.Error(), "refusing to upgrade non-installed binary") {
+		t.Fatalf("err = %q, want non-installed binary message for wt.exe", err.Error())
+	}
+}
+
+func TestUpgrade_FiltersWindowsAppsAlias(t *testing.T) {
+	t.Parallel()
+
+	var gotInstallDir string
+	d := &deps{
+		Cwd: "/repo",
+		Executable: func() (string, error) {
+			return "/home/me/go/bin/wt-tool", nil
+		},
+		LookPath: func(file string) (string, error) {
+			if file != "wt" {
+				t.Fatalf("file = %q, want wt", file)
+			}
+			// Simulate Windows lookPath resolving the Terminal App Execution Alias
+			// (the bug we are guarding against: a WindowsApps entry should NOT be
+			// treated as the install target).
+			return `/home/me/AppData/Local/Microsoft/WindowsApps/wt.exe`, nil
+		},
+		InstallWithGo: func(_ context.Context, workDir string, installDir string, packageRef string) (runner.Result, error) {
+			gotInstallDir = installDir
+			return runner.Result{ExitCode: 0}, nil
+		},
+		ResolveLatestVersion: func(_ context.Context, _ string, _ string) (string, error) {
+			return "v0.10.2", nil
+		},
+	}
+
+	root := newRootCmd()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"upgrade"})
+	root.SetContext(context.WithValue(context.Background(), depsKey{}, d))
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	wantInstallDir := filepath.Clean("/home/me/go/bin")
+	if filepath.Clean(gotInstallDir) != wantInstallDir {
+		t.Fatalf("installDir = %q, want %q (must ignore WindowsApps lookPath result)", gotInstallDir, wantInstallDir)
+	}
+}
+
 func TestUpgrade_RejectsNonInstalledBinary(t *testing.T) {
 	t.Parallel()
 

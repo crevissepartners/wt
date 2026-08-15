@@ -14,16 +14,19 @@ import (
 )
 
 type removeResult struct {
-	Path    string `json:"path"`
-	Branch  string `json:"branch,omitempty"`
-	Action  string `json:"action"`
-	Applied bool   `json:"applied"`
-	Removed bool   `json:"removed"`
+	Path       string   `json:"path"`
+	Branch     string   `json:"branch,omitempty"`
+	Action     string   `json:"action"`
+	Applied    bool     `json:"applied"`
+	Removed    bool     `json:"removed"`
+	Dirty      *bool    `json:"dirty"`
+	DirtyKinds []string `json:"dirtyKinds,omitempty"`
 }
 
 func newRemoveCmd() *cobra.Command {
 	var dryRun bool
 	var force bool
+	var forceDirty bool
 	var jsonOut bool
 	var tui bool
 
@@ -81,12 +84,24 @@ func newRemoveCmd() *cobra.Command {
 				return err
 			}
 
+			dirty := resolveWorktreeDirty(ctx, d, nil, chosen)
 			result := removeResult{
-				Path:    chosen.Path,
-				Branch:  strings.TrimPrefix(chosen.Branch, "refs/heads/"),
-				Action:  actionWouldRemove,
-				Applied: false,
-				Removed: false,
+				Path:       chosen.Path,
+				Branch:     strings.TrimPrefix(chosen.Branch, "refs/heads/"),
+				Action:     actionWouldRemove,
+				Applied:    false,
+				Removed:    false,
+				Dirty:      dirty.JSONValue(),
+				DirtyKinds: dirty.KindList(),
+			}
+
+			if dirty.BlocksRemoval() && !forceDirty {
+				if !dryRun {
+					return usageError(fmt.Errorf("wt remove: %s; use --force-dirty to remove anyway: %s", dirtyRefusalDetail(dirty), chosen.Path))
+				}
+				result.Action = actionSkip
+				fmt.Fprintf(cmd.ErrOrStderr(), "note: %s; use --force-dirty to remove anyway\n", dirtyRefusalDetail(dirty))
+				return writeRemoveResult(cmd, jsonOut, result)
 			}
 
 			if !dryRun && !force {
@@ -108,26 +123,39 @@ func newRemoveCmd() *cobra.Command {
 				result.Removed = true
 			}
 
-			if jsonOut {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(result)
-			}
-
-			line := fmt.Sprintf("%s  %s", result.Action, result.Path)
-			if result.Branch != "" {
-				line += fmt.Sprintf("  (%s)", result.Branch)
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), line)
-			return nil
+			return writeRemoveResult(cmd, jsonOut, result)
 		},
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview removal without changing anything")
 	cmd.Flags().BoolVar(&force, "force", false, "actually remove the selected worktree")
+	cmd.Flags().BoolVar(&forceDirty, "force-dirty", false, "allow removing a worktree that has uncommitted changes")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&tui, "tui", false, "use TUI selection when query is omitted or ambiguous")
 	return cmd
+}
+
+func writeRemoveResult(cmd *cobra.Command, jsonOut bool, result removeResult) error {
+	if jsonOut {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	line := fmt.Sprintf("%s  %s", result.Action, result.Path)
+	if result.Branch != "" {
+		line += fmt.Sprintf("  (%s)", result.Branch)
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), line)
+	return nil
+}
+
+// dirtyRefusalDetail explains why a remove target is not safe to delete.
+func dirtyRefusalDetail(dirty dirtyState) string {
+	if summary := dirty.KindSummary(); summary != "" {
+		return fmt.Sprintf("worktree has uncommitted changes (%s)", summary)
+	}
+	return "cannot determine worktree status"
 }
 
 func selectRemoveTarget(cmd *cobra.Command, d *deps, wts []worktree.Worktree, query string, tui bool) (worktree.Worktree, error) {

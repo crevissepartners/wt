@@ -29,6 +29,9 @@ type cleanupItem struct {
 	Reason            string `json:"reason"`
 	SafeToRemove      bool   `json:"safeToRemove"`
 
+	Dirty      *bool    `json:"dirty"`
+	DirtyKinds []string `json:"dirtyKinds,omitempty"`
+
 	PathExists          *bool  `json:"pathExists,omitempty"`
 	DotGitExists        *bool  `json:"dotGitExists,omitempty"`
 	Valid               *bool  `json:"valid,omitempty"`
@@ -46,6 +49,7 @@ type cleanupItem struct {
 type cleanupCandidate struct {
 	Worktree worktree.Worktree
 	Info     *verifyInfo
+	Dirty    dirtyState
 	Signals  listSignals
 	Reason   string
 }
@@ -189,7 +193,8 @@ func collectCleanupCandidates(ctx context.Context, d *deps, repoRoot string) ([]
 		if err != nil {
 			return nil, "", err
 		}
-		signals := deriveListSignals(wt, info, paths)
+		dirty := resolveWorktreeDirty(ctx, d, info, wt)
+		signals := deriveListSignals(wt, info, dirty, paths)
 		if hostingNote == "" && info != nil {
 			switch info.HostingReason {
 			case "gh-auth-unavailable":
@@ -203,8 +208,9 @@ func collectCleanupCandidates(ctx context.Context, d *deps, repoRoot string) ([]
 		out = append(out, cleanupCandidate{
 			Worktree: wt,
 			Info:     info,
+			Dirty:    dirty,
 			Signals:  signals,
-			Reason:   cleanupReason(wt, info, signals),
+			Reason:   cleanupReason(wt, info, dirty, signals),
 		})
 	}
 
@@ -418,6 +424,8 @@ func cleanupItemForCandidate(candidate cleanupCandidate, applied bool) cleanupIt
 		Removed:           false,
 		Reason:            candidate.Reason,
 		SafeToRemove:      candidate.Signals.SafeToRemove,
+		Dirty:             candidate.Dirty.JSONValue(),
+		DirtyKinds:        candidate.Dirty.KindList(),
 	}
 	if candidate.Info != nil {
 		item.PathExists = &candidate.Info.PathExists
@@ -458,7 +466,7 @@ func formatCleanupLine(item cleanupItem) string {
 	return line
 }
 
-func cleanupReason(wt worktree.Worktree, info *verifyInfo, signals listSignals) string {
+func cleanupReason(wt worktree.Worktree, info *verifyInfo, dirty dirtyState, signals listSignals) string {
 	switch signals.RecommendedAction {
 	case "prune":
 		if wt.PruneReason != "" {
@@ -485,11 +493,11 @@ func cleanupReason(wt worktree.Worktree, info *verifyInfo, signals listSignals) 
 		}
 		return strings.Join(reasons, ", ")
 	default:
-		return cleanupSkipReason(wt, info, signals)
+		return cleanupSkipReason(wt, info, dirty, signals)
 	}
 }
 
-func cleanupSkipReason(wt worktree.Worktree, info *verifyInfo, signals listSignals) string {
+func cleanupSkipReason(wt worktree.Worktree, info *verifyInfo, dirty dirtyState, signals listSignals) string {
 	switch {
 	case signals.Current:
 		return "current"
@@ -514,9 +522,15 @@ func cleanupSkipReason(wt worktree.Worktree, info *verifyInfo, signals listSigna
 		return "missing-git"
 	case wt.Prunable:
 		return "prunable"
-	default:
-		return "not-recommended"
 	}
+
+	if dirty.BlocksRemoval() {
+		if summary := dirty.KindSummary(); summary != "" {
+			return "dirty:" + summary
+		}
+		return "dirty-unknown"
+	}
+	return "not-recommended"
 }
 
 func cleanupShortRef(ref string) string {

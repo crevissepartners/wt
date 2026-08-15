@@ -28,6 +28,10 @@ func decodeJSONObjects(t *testing.T, data []byte) []map[string]any {
 func newListCmdWithDeps(t *testing.T, d *deps) (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 
+	if d.DirtyStatus == nil {
+		d.DirtyStatus = cleanDirtyStatus
+	}
+
 	cmd := newListCmd()
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)

@@ -56,7 +56,7 @@ onExistingTarget = "fail"
 
 - 한 줄에 `basename  branch  short-head  path`를 출력한다.
 - 추가 신호가 있으면 `[...]` 마커를 붙인다.
-- 마커는 `locked`, `prunable`, `current`, `primary`, `missing-path`, `missing-git`, `merged`, `merged-hosting:<provider>`, `stale`, `safe-remove`, `recommend:prune|remove`를 사용한다.
+- 마커는 `locked`, `prunable`, `current`, `primary`, `missing-path`, `missing-git`, `dirty`, `merged`, `merged-hosting:<provider>`, `stale`, `safe-remove`, `recommend:prune|remove`를 사용한다.
 
 옵션:
 
@@ -75,6 +75,17 @@ onExistingTarget = "fail"
 - `--porcelain`과 `--verify-hosting`은 함께 쓸 수 없다.
 - `--porcelain`과 `--stale`/`--safe-to-remove`/`--recommended`는 함께 쓸 수 없다.
 
+dirty 규칙:
+
+- dirty 판정은 flag opt-in이 아니라 항상 수행한다. `--verify` 유무와 무관하게 같은 판정 함수를 쓴다.
+- dirty 범위는 `git worktree remove`와 같다: staged 변경, tracked 파일의 unstaged 변경, merge conflict, untracked 파일.
+  - untracked만 있어도 dirty로 본다. untracked 파일은 git object가 없어 삭제하면 복구할 수 없다.
+  - ignored 파일(`.gitignore`)은 dirty로 보지 않는다. 빌드 산출물 때문에 모든 worktree가 영구히 제거 불가가 되는 것을 막는다.
+  - stash entry는 dirty로 보지 않는다. stash는 공용 object store에 저장되어 worktree 제거 후에도 남는다.
+- dirty 판정 대상은 path와 `.git`이 모두 존재하는 entry뿐이다. 둘 중 하나라도 없으면 `dirty: null`이다.
+- dirty 판정이 실패하면(예: `git status` 실행 실패) `dirty: null`로 두고 **안전 쪽으로** 판단한다. 즉 `safeToRemove=false`가 된다.
+- `--json`은 각 항목에 `dirty`(`true|false|null`)를 항상 포함하고, dirty일 때만 `dirtyKinds`(`staged`, `modified`, `untracked`, `conflicted`)를 포함한다.
+
 검증 규칙:
 
 - `--json --verify`는 각 항목에 `pathExists`, `dotGitExists`, `valid`, `mergedIntoBase`, `baseRef`를 포함한다.
@@ -91,7 +102,8 @@ onExistingTarget = "fail"
 
 - `stale=true`: `prunable=true` 이거나 path/.git 누락
 - `recommendedAction=prune`: `prunable=true`
-- `recommendedAction=remove`: `prunable=false`, `current=false`, `primary=false`, `detached=false`, `locked=false`, `missing-path=false`, `missing-git=false`, 그리고 로컬 merge 또는 hosting merge가 확인된 경우
+- `recommendedAction=remove`: `prunable=false`, `current=false`, `primary=false`, `detached=false`, `locked=false`, `missing-path=false`, `missing-git=false`, `dirty=false`, 그리고 로컬 merge 또는 hosting merge가 확인된 경우
+  - `dirty=true` 또는 `dirty=null`이면 merge 여부와 무관하게 `recommendedAction=none`이다.
 - `safeToRemove=true`: `recommendedAction=remove`와 같은 안전 기준을 만족한 경우
 
 필터 규칙:
@@ -225,6 +237,11 @@ branch용 worktree를 만든다.
 - 현재 실행 중인 worktree는 제거할 수 없다.
 - primary worktree는 제거할 수 없다.
 - `prunable` entry는 remove 대상이 아니며 `wt prune --apply`를 사용해야 한다.
+- 커밋되지 않은 변경이 있는 worktree는 `--force-dirty` 없이는 제거하지 않는다.
+  - dirty 범위와 판정 규칙은 `wt list`의 dirty 규칙과 같다.
+  - dirty 판정을 할 수 없으면(`git status` 실패) 마찬가지로 거부한다.
+  - `--force`는 confirm prompt를 건너뛰는 플래그일 뿐이며 dirty guard를 덮어쓰지 않는다.
+  - `--force-dirty`는 dirty guard만 해제하며, non-interactive 환경에서 여전히 `--dry-run` 또는 `--force`가 필요하다.
 - 실제 삭제는 `git worktree remove --force <path>`를 사용한다.
 - remove 실행 전 대상 worktree 내부 파일/디렉터리(예: `.cache`)의 readonly 권한을 owner-write 가능 상태로 보정한 뒤 삭제를 시도한다.
 - readonly 항목 때문에 실패하면 error에 `target=<path>`와 함께 진단 메시지를 포함한다.
@@ -233,20 +250,24 @@ branch용 worktree를 만든다.
 
 - `--dry-run`
 - `--force`
-- `--json`: `{path, branch, action, applied, removed}`
+- `--force-dirty`: 커밋되지 않은 변경이 있어도 제거 허용
+- `--json`: `{path, branch, action, applied, removed, dirty, dirtyKinds?}`
 - `--tui`: query 생략 또는 다중 후보 시 TUI 선택
 
 TUI 규칙:
 
 - `wt remove --tui`는 전체 registered worktree 목록을 대상으로 선택한다.
 - `wt remove <query> --tui`는 0개면 실패, 1개면 바로 선택, 2개 이상이면 TUI로 고른다.
-- TUI를 써도 current/primary/prunable safety rule은 그대로 유지된다.
+- TUI를 써도 current/primary/prunable/dirty safety rule은 그대로 유지된다.
 - 취소는 exit code `130`이다.
 
 출력 규칙:
 
-- text 출력은 `would-remove` 또는 `removed` 한 줄이다.
+- text 출력은 `would-remove`, `removed`, `skip` 중 한 줄이다.
+- `--dry-run`이고 dirty guard에 걸리면 `skip` 한 줄을 `stdout`에 쓰고, 사유와 `--force-dirty` 안내를 `stderr` note로 출력한다. exit code는 `0`이다.
+- `--dry-run`이 아닌 경로에서 dirty guard에 걸리면 usage error(exit code `2`)로 실패하고, 사유와 `--force-dirty` 안내를 에러 메시지에 포함한다.
 - interactive confirm prompt는 `stderr`에 `Remove worktree <path> (<branch>)? [y/N]` 형식으로 출력한다.
+- dirty guard는 confirm prompt보다 먼저 평가한다. 사용자가 dirty 여부를 모른 채 `y`로 답하는 상황을 만들지 않는다.
 
 ## `wt prune`
 
@@ -287,6 +308,7 @@ TUI 규칙:
 - 기본 동작은 preview-only 다.
 - `recommendedAction=prune`는 `wt prune`과 같은 정책으로 처리한다.
 - `recommendedAction=remove`는 `safeToRemove=true`인 항목에만 적용한다.
+- 커밋되지 않은 변경이 있는 worktree는 preview와 `--apply` 모두에서 대상이 아니다. `cleanup`에는 dirty override 플래그가 없다.
 - 실제 prune은 `git worktree prune --expire now`
 - 실제 remove는 `git worktree remove --force <path>`
 - remove 실행 경로는 `wt remove`와 동일한 readonly 권한 보정/실패 진단 규칙을 사용한다.
@@ -294,7 +316,8 @@ TUI 규칙:
 옵션:
 
 - `--apply`
-- `--json`: `{path, branch, recommendedAction, action, applied, removed, reason, safeToRemove, ...verifyFields}` 배열
+- `--json`: `{path, branch, recommendedAction, action, applied, removed, reason, safeToRemove, dirty, dirtyKinds?, ...verifyFields}` 배열
+  - `dirty`/`dirtyKinds` semantics는 `wt list --json`과 같다.
   - local verify 필드는 `pathExists`, `dotGitExists`, `valid`, `mergedIntoBase`, `baseRef`를 포함한다.
   - hosting verify가 수행되면 `hostingProvider`, `hostingKind`, `mergedViaHosting`, `hostingReason`, `hostingChangeNumber`, `hostingChangeTitle`, `hostingChangeUrl`를 포함한다.
 - `--tui`: 추천된 prune/remove 후보를 TUI에서 선택해 preview/apply 대상으로 좁힌다.
@@ -312,6 +335,7 @@ TUI 규칙:
 - text 출력은 `would-prune`, `would-remove`, `skip`, `pruned`, `removed`, `kept`를 사용한다.
 - 각 line은 `action  path  (branch)  [reason]` 형식이다.
 - remove 이유는 `merged:<base>` 또는 `merged-hosting:<provider>[#number]`처럼 짧게 출력한다.
+- dirty 때문에 제외된 항목의 skip 이유는 `dirty:<kinds>`(예: `dirty:modified,untracked`)이고, 판정 실패는 `dirty-unknown`이다.
 
 ## `wt doctor`
 

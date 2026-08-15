@@ -125,7 +125,8 @@ branch refs/heads/current
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -270,7 +271,8 @@ branch refs/heads/feature-remove
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -388,7 +390,8 @@ branch refs/heads/feature-remove
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -542,8 +545,9 @@ branch refs/heads/feature-x
 	root.SetErr(&stderr)
 	root.SetArgs([]string{"cleanup", "--json"})
 	root.SetContext(context.WithValue(context.Background(), depsKey{}, &deps{
-		Runner: r,
-		Cwd:    cwd,
+		Runner:      r,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -661,7 +665,8 @@ branch refs/heads/feature-x
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -814,7 +819,8 @@ branch refs/heads/feature-remove
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -947,7 +953,8 @@ branch refs/heads/missing-git
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -1046,7 +1053,8 @@ branch refs/heads/current
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	if err := root.Execute(); err != nil {
@@ -1201,8 +1209,9 @@ branch refs/heads/feature-remove
 				},
 			},
 		},
-		Cwd:       cwd,
-		CanUseTUI: func() bool { return true },
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
+		CanUseTUI:   func() bool { return true },
 		ReviewCleanup: func(_ *cobra.Command, candidates []cleanupCandidate, apply bool) ([]cleanupCandidate, error) {
 			if apply {
 				t.Fatal("apply = true, want false")
@@ -1347,8 +1356,9 @@ branch refs/heads/feature-x
 				},
 			},
 		},
-		Cwd:       cwd,
-		CanUseTUI: func() bool { return true },
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
+		CanUseTUI:   func() bool { return true },
 		ReviewCleanup: func(_ *cobra.Command, candidates []cleanupCandidate, apply bool) ([]cleanupCandidate, error) {
 			if !apply {
 				t.Fatal("apply = false, want true")
@@ -1449,8 +1459,9 @@ prunable gitdir file points to non-existent location
 				},
 			},
 		},
-		Cwd:       cwd,
-		CanUseTUI: func() bool { return true },
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
+		CanUseTUI:   func() bool { return true },
 		ReviewCleanup: func(_ *cobra.Command, candidates []cleanupCandidate, _ bool) ([]cleanupCandidate, error) {
 			return candidates, nil
 		},
@@ -1533,8 +1544,9 @@ prunable gitdir file points to non-existent location
 				},
 			},
 		},
-		Cwd:       cwd,
-		CanUseTUI: func() bool { return true },
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
+		CanUseTUI:   func() bool { return true },
 		ReviewCleanup: func(_ *cobra.Command, _ []cleanupCandidate, _ bool) ([]cleanupCandidate, error) {
 			return nil, picker.ErrCancelled
 		},
@@ -1671,7 +1683,8 @@ branch refs/heads/feature-remove
 				},
 			},
 		},
-		Cwd: cwd,
+		Cwd:         cwd,
+		DirtyStatus: cleanDirtyStatus,
 	}))
 
 	err := root.Execute()

@@ -60,6 +60,21 @@
 - 기본 경로 계산은 브랜치의 `/`를 하위 디렉터리로 유지한다.
 - 절대 경로나 상위 디렉터리 탈출(`..`)이 되는 브랜치명은 기본 경로 계산에 사용하지 않는다.
 
+## Dirty Worktree Policy
+
+- 커밋되지 않은 작업이 남아 있는 worktree는 어떤 명령에서도 "제거해도 안전"으로 분류하지 않는다.
+- 판정 범위는 `git worktree remove`와 동일하게 맞춘다.
+  - 포함: staged 변경, tracked 파일의 unstaged 변경, merge conflict, untracked 파일
+  - 제외: ignored 파일, stash entry
+  - untracked만 있어도 dirty다. untracked 파일은 git object가 없어 삭제하면 복구 경로가 없다.
+  - ignored 파일까지 dirty로 보면 빌드 산출물(`.cache` 등)이 있는 모든 worktree가 영구히 제거 불가가 되므로 제외한다.
+  - stash entry는 공용 object store와 `refs/stash`에 저장되어 worktree 제거 후에도 남고, worktree별 귀속도 신뢰할 수 없으므로 제외한다.
+- 판정은 flag opt-in이 아니다. `wt list`, `wt cleanup`, `wt remove`가 모두 같은 판정 함수를 사용한다.
+  - 안전 입력이 opt-in flag 뒤에 있으면 flag를 켠 쪽이 더 위험해지는 역전이 생긴다.
+- 판정 대상은 path와 `.git`이 모두 존재하는 entry뿐이다. 없는 경로에는 잃을 작업도 없다.
+- 판정에 실패하면 unknown으로 두고 안전 쪽으로 처리한다(제거 대상에서 제외).
+- 판정 결과는 텍스트 마커(`dirty`)와 JSON 필드(`dirty`, `dirtyKinds`)로 항상 드러낸다.
+
 ## Remove Safety
 
 - `wt remove`는 정상 worktree 제거 전용 명령이다.
@@ -70,6 +85,10 @@
 - non-interactive 환경에서는 `--dry-run` 또는 `--force`를 강제한다.
 - current worktree와 primary worktree는 제거할 수 없다.
 - `prunable` entry는 remove가 아니라 prune으로 정리한다.
+- dirty worktree는 `--force-dirty` 없이는 제거하지 않는다.
+  - `--force`의 기존 의미는 "confirm prompt 생략"이므로 그대로 둔다. 여기에 "커밋 안 된 작업 삭제"까지 얹으면 non-interactive 자동화가 의도치 않게 파괴적이 된다.
+  - 그래서 dirty override는 별도 플래그로 분리한다. 두 플래그는 직교한다.
+  - dirty guard는 confirm prompt보다 먼저 평가한다.
 - `--tui`는 선택 UX만 바꾸며 safety를 완화하지 않는다.
 
 ## Prune Safety
@@ -88,6 +107,8 @@
 - `recommendedAction=prune`는 prune 정책으로만 처리한다.
 - `recommendedAction=remove`는 `safeToRemove=true`인 항목에만 적용한다.
 - current, primary, detached, locked, missing-path, missing-git, prunable 예외는 cleanup에서도 그대로 유지한다.
+- dirty worktree는 preview와 `--apply` 모두에서 제외한다. cleanup은 일괄 명령이라 dirty override 플래그를 제공하지 않는다.
+  - 개별 판단이 필요하면 `wt remove <query> --force --force-dirty`로 명시적으로 지정한다.
 
 ## Structured Output Consistency Policy (권장)
 

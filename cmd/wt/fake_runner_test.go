@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/crevissepartners/wt/internal/git"
 	"github.com/crevissepartners/wt/internal/runner"
 )
 
@@ -41,6 +43,30 @@ func (f *fakeRunner) Run(_ context.Context, workDir string, name string, args ..
 	}
 
 	return want.res, want.err
+}
+
+// cleanDirtyStatus is the default dirty probe stub: every worktree is clean.
+// Tests that exercise the dirty guard use dirtyStatusByPath or failingDirtyStatus
+// instead. Stubbing here keeps the strict fakeRunner call sequences focused on
+// the commands each test actually asserts on.
+func cleanDirtyStatus(_ context.Context, _ runner.Runner, _ string) (git.WorktreeStatus, error) {
+	return git.WorktreeStatus{}, nil
+}
+
+// dirtyStatusByPath reports the given status for the listed worktree paths and
+// clean for everything else.
+func dirtyStatusByPath(byPath map[string]git.WorktreeStatus) func(context.Context, runner.Runner, string) (git.WorktreeStatus, error) {
+	return func(_ context.Context, _ runner.Runner, worktreePath string) (git.WorktreeStatus, error) {
+		if status, ok := byPath[worktreePath]; ok {
+			return status, nil
+		}
+		return git.WorktreeStatus{}, nil
+	}
+}
+
+// failingDirtyStatus simulates a probe that cannot determine the worktree state.
+func failingDirtyStatus(_ context.Context, _ runner.Runner, _ string) (git.WorktreeStatus, error) {
+	return git.WorktreeStatus{}, errors.New("git status --porcelain: boom")
 }
 
 func writeExecutableStub(t *testing.T, path string) {

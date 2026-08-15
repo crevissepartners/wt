@@ -102,11 +102,12 @@ func newListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			dirtyStates := resolveWorktreeDirtyStates(ctx, d, verifyInfos, wts)
 
 			if jsonOut {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				return enc.Encode(toJSONWorktrees(wts, verifyCtx, verifyInfos, paths, filters))
+				return enc.Encode(toJSONWorktrees(wts, verifyCtx, verifyInfos, dirtyStates, paths, filters))
 			}
 
 			hostingNote := formatHostingVerifyNote(verifyCtx, verifyInfos)
@@ -116,11 +117,12 @@ func newListCmd() *cobra.Command {
 
 			for i, wt := range wts {
 				info := verifyInfoAt(verifyInfos, i)
-				signals := deriveListSignals(wt, info, paths)
+				dirty := dirtyStateAt(dirtyStates, i)
+				signals := deriveListSignals(wt, info, dirty, paths)
 				if !signalsMatchListFilters(signals, filters) {
 					continue
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), formatWorktreeLine(wt, info, signals))
+				fmt.Fprintln(cmd.OutOrStdout(), formatWorktreeLine(wt, info, dirty, signals))
 			}
 			return nil
 		},
@@ -148,6 +150,9 @@ type jsonWorktree struct {
 	Current  bool `json:"current"`
 	Primary  bool `json:"primary"`
 	Stale    bool `json:"stale"`
+
+	Dirty      *bool    `json:"dirty"`
+	DirtyKinds []string `json:"dirtyKinds,omitempty"`
 
 	RecommendedAction string `json:"recommendedAction"`
 	SafeToRemove      bool   `json:"safeToRemove"`
@@ -284,6 +289,9 @@ func (jwt jsonWorktree) MarshalJSON() ([]byte, error) {
 		Primary  bool `json:"primary"`
 		Stale    bool `json:"stale"`
 
+		Dirty      *bool    `json:"dirty"`
+		DirtyKinds []string `json:"dirtyKinds,omitempty"`
+
 		RecommendedAction string `json:"recommendedAction"`
 		SafeToRemove      bool   `json:"safeToRemove"`
 		LockReason        string `json:"lockReason,omitempty"`
@@ -314,6 +322,8 @@ func (jwt jsonWorktree) MarshalJSON() ([]byte, error) {
 		Current:           jwt.Current,
 		Primary:           jwt.Primary,
 		Stale:             jwt.Stale,
+		Dirty:             jwt.Dirty,
+		DirtyKinds:        jwt.DirtyKinds,
 		RecommendedAction: jwt.RecommendedAction,
 		SafeToRemove:      jwt.SafeToRemove,
 		LockReason:        jwt.LockReason,
@@ -348,8 +358,12 @@ func (jwt jsonWorktree) MarshalJSON() ([]byte, error) {
 			"current":           jwt.Current,
 			"primary":           jwt.Primary,
 			"stale":             jwt.Stale,
+			"dirty":             jwt.Dirty,
 			"recommendedAction": jwt.RecommendedAction,
 			"safeToRemove":      jwt.SafeToRemove,
+		}
+		if len(jwt.DirtyKinds) > 0 {
+			outMap["dirtyKinds"] = jwt.DirtyKinds
 		}
 		if jwt.LockReason != "" {
 			outMap["lockReason"] = jwt.LockReason
@@ -388,11 +402,12 @@ func (jwt jsonWorktree) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func toJSONWorktrees(wts []worktree.Worktree, verifyCtx *listVerifyContext, verifyInfos []*verifyInfo, paths listPaths, filters listFilters) []jsonWorktree {
+func toJSONWorktrees(wts []worktree.Worktree, verifyCtx *listVerifyContext, verifyInfos []*verifyInfo, dirtyStates []dirtyState, paths listPaths, filters listFilters) []jsonWorktree {
 	out := make([]jsonWorktree, 0, len(wts))
 	for i, wt := range wts {
 		info := verifyInfoAt(verifyInfos, i)
-		signals := deriveListSignals(wt, info, paths)
+		dirty := dirtyStateAt(dirtyStates, i)
+		signals := deriveListSignals(wt, info, dirty, paths)
 		if !signalsMatchListFilters(signals, filters) {
 			continue
 		}
@@ -406,6 +421,8 @@ func toJSONWorktrees(wts []worktree.Worktree, verifyCtx *listVerifyContext, veri
 			Current:           signals.Current,
 			Primary:           signals.Primary,
 			Stale:             signals.Stale,
+			Dirty:             dirty.JSONValue(),
+			DirtyKinds:        dirty.KindList(),
 			RecommendedAction: signals.RecommendedAction,
 			SafeToRemove:      signals.SafeToRemove,
 			LockReason:        wt.LockReason,
@@ -463,6 +480,90 @@ func verifyWorktree(cmd *cobra.Command, d *deps, verifyCtx *listVerifyContext, w
 		ctx = cmd.Context()
 	}
 	return verifyWorktreeWithContext(ctx, d, verifyCtx, wt)
+}
+
+// dirtyState is the uncommitted-work signal for a single worktree.
+//
+// It is a tri-state on purpose:
+//   - Probed=false: the worktree path or its .git entry is missing, so there is
+//     no working tree to inspect and nothing uncommitted to lose.
+//   - Probed=true, Status=nil: the probe ran but failed. Treated as unsafe.
+//   - Probed=true, Status!=nil: definitive answer.
+type dirtyState struct {
+	Probed bool
+	Status *git.WorktreeStatus
+}
+
+// BlocksRemoval reports whether this state must keep an entry out of any
+// remove recommendation. Unknown-but-present is treated as unsafe.
+func (s dirtyState) BlocksRemoval() bool {
+	return s.Probed && (s.Status == nil || s.Status.Dirty)
+}
+
+// JSONValue returns the tri-state `dirty` field value (nil == undetermined).
+func (s dirtyState) JSONValue() *bool {
+	if !s.Probed || s.Status == nil {
+		return nil
+	}
+	dirty := s.Status.Dirty
+	return &dirty
+}
+
+func (s dirtyState) KindList() []string {
+	if !s.Probed || s.Status == nil {
+		return nil
+	}
+	return s.Status.Kinds
+}
+
+func (s dirtyState) KindSummary() string {
+	kinds := s.KindList()
+	if len(kinds) == 0 {
+		return ""
+	}
+	return strings.Join(kinds, ",")
+}
+
+// resolveWorktreeDirtyStates computes the dirty signal for every worktree, in
+// the same order as wts.
+func resolveWorktreeDirtyStates(ctx context.Context, d *deps, verifyInfos []*verifyInfo, wts []worktree.Worktree) []dirtyState {
+	out := make([]dirtyState, len(wts))
+	for i, wt := range wts {
+		out[i] = resolveWorktreeDirty(ctx, d, verifyInfoAt(verifyInfos, i), wt)
+	}
+	return out
+}
+
+func dirtyStateAt(states []dirtyState, i int) dirtyState {
+	if i < 0 || i >= len(states) {
+		return dirtyState{}
+	}
+	return states[i]
+}
+
+// resolveWorktreeDirty computes the dirty signal for one worktree. It is the
+// single entry point used by list (with and without --verify), cleanup, and
+// remove so every command judges uncommitted work the same way.
+func resolveWorktreeDirty(ctx context.Context, d *deps, info *verifyInfo, wt worktree.Worktree) dirtyState {
+	pathExists, dotGitExists := worktreePathStatus(wt.Path)
+	if info != nil {
+		pathExists = info.PathExists
+		dotGitExists = info.DotGitExists
+	}
+	if !pathExists || !dotGitExists || d == nil {
+		return dirtyState{}
+	}
+
+	probe := git.WorktreeDirtyStatus
+	if d.DirtyStatus != nil {
+		probe = d.DirtyStatus
+	}
+
+	status, err := probe(ctx, d.Runner, wt.Path)
+	if err != nil {
+		return dirtyState{Probed: true}
+	}
+	return dirtyState{Probed: true, Status: &status}
 }
 
 func verifyWorktreeWithContext(ctx context.Context, d *deps, verifyCtx *listVerifyContext, wt worktree.Worktree) (*verifyInfo, error) {
@@ -535,7 +636,7 @@ func verifyWorktreeWithContext(ctx context.Context, d *deps, verifyCtx *listVeri
 	}, nil
 }
 
-func formatWorktreeLine(wt worktree.Worktree, info *verifyInfo, signals listSignals) string {
+func formatWorktreeLine(wt worktree.Worktree, info *verifyInfo, dirty dirtyState, signals listSignals) string {
 	head := wt.HEAD
 	if len(head) > 7 {
 		head = head[:7]
@@ -579,6 +680,9 @@ func formatWorktreeLine(wt worktree.Worktree, info *verifyInfo, signals listSign
 		if !dotGitExists {
 			flags = append(flags, "missing-git")
 		}
+	}
+	if value := dirty.JSONValue(); value != nil && *value {
+		flags = append(flags, "dirty")
 	}
 	if signals.Stale {
 		flags = append(flags, "stale")
@@ -649,7 +753,7 @@ func resolveListPaths(ctx context.Context, d *deps, repoRoot string) listPaths {
 	return paths
 }
 
-func deriveListSignals(wt worktree.Worktree, info *verifyInfo, paths listPaths) listSignals {
+func deriveListSignals(wt worktree.Worktree, info *verifyInfo, dirty dirtyState, paths listPaths) listSignals {
 	pathExists, dotGitExists := worktreePathStatus(wt.Path)
 	if info != nil {
 		pathExists = info.PathExists
@@ -669,6 +773,7 @@ func deriveListSignals(wt worktree.Worktree, info *verifyInfo, paths listPaths) 
 		!primary &&
 		pathExists &&
 		dotGitExists &&
+		!dirty.BlocksRemoval() &&
 		(mergedIntoBase || mergedViaHosting)
 
 	recommendedAction := "none"

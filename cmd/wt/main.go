@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/crevissepartners/wt/internal/buildinfo"
+	"github.com/crevissepartners/wt/internal/git"
 	"github.com/crevissepartners/wt/internal/runner"
 	"github.com/crevissepartners/wt/internal/worktree"
 )
@@ -83,6 +84,7 @@ type deps struct {
 	ConfirmCleanup       func(in io.Reader, out io.Writer, count int) (bool, error)
 	InstallWithGo        func(ctx context.Context, workDir string, installDir string, packageRef string) (runner.Result, error)
 	ResolveLatestVersion func(ctx context.Context, workDir string, modulePath string) (string, error)
+	DirtyStatus          func(ctx context.Context, r runner.Runner, worktreePath string) (git.WorktreeStatus, error)
 	LookPath             func(file string) (string, error)
 	ReadFile             func(path string) ([]byte, error)
 	FileExists           func(path string) bool
@@ -116,6 +118,7 @@ func ensureDeps(cmd *cobra.Command) error {
 		ConfirmCleanup:       confirmCleanup,
 		InstallWithGo:        installWithGo,
 		ResolveLatestVersion: resolveLatestVersion,
+		DirtyStatus:          git.WorktreeDirtyStatus,
 		LookPath:             exec.LookPath,
 		ReadFile:             os.ReadFile,
 		FileExists: func(path string) bool {
